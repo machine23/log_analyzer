@@ -36,6 +36,10 @@ class LogAnalyzer:
 
     def __init__(self, config):
         self.config = config
+        self.requests_count = 0
+        self.requests_time_sum = 0
+        self.request_times = {}
+        self.parsing_errors = 0
         self.line_cols = (
             'remote_addr',
             'remote_user',
@@ -95,6 +99,20 @@ class LogAnalyzer:
             parsed_dict[col] = value
 
         return parsed_dict
+
+    def parse_log(self, logfile):
+        for line in logfile:
+            try:
+                req = self.parse_line(line)
+            except ValueError as err:
+                self.parsing_errors += 1
+                continue
+
+            req_time = req.get('request_time')
+            url = req.get('request').split()[1]
+            self.requests_count += 1
+            self.requests_time_sum += req_time
+            self.request_times.setdefault(url, []).append(req_time)
 
 
 def main():

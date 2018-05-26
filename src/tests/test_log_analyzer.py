@@ -1,4 +1,5 @@
 import unittest
+import os
 from datetime import datetime
 from unittest import mock
 
@@ -6,6 +7,11 @@ from ..log_analyzer import LogAnalyzer
 
 
 class TestLogAnalyzer(unittest.TestCase):
+    @staticmethod
+    def find_file(filename):
+        test_dir = os.path.dirname(os.path.abspath(__file__))
+        return os.path.join(test_dir, filename)
+
     def setUp(self):
         config = {
             'REPORT_SIZE': 1000,
@@ -15,6 +21,7 @@ class TestLogAnalyzer(unittest.TestCase):
         }
         self.analyzer = LogAnalyzer(config)
         self.maxDiff = None
+        self.epsilon = 0.0001
 
     def test_date_in_logname(self):
         logname = 'sample.log-20170630.gz'
@@ -87,6 +94,60 @@ class TestLogAnalyzer(unittest.TestCase):
             with self.subTest(case=case):
                 with self.assertRaises(ValueError):
                     self.analyzer.parse_line(case)
+
+    def test_parse_log(self):
+        with open(self.find_file('log/sample.log-1')) as logfile:
+            self.analyzer.parse_log(logfile)
+            expect_requests_count = 7
+            expect_requests_time_sum = 1.6
+            expect_parsing_errors = 0
+            expect_request_times = {
+                '/api/v2/banner': [0.3, 0.4, 0.5],
+                '/api/1/photo': [0.1, 0.1, 0.1, 0.1],
+            }
+            self.assertEqual(
+                self.analyzer.requests_count,
+                expect_requests_count
+            )
+            self.assertLess(
+                abs(self.analyzer.requests_time_sum - expect_requests_time_sum),
+                self.epsilon
+            )
+            self.assertDictEqual(
+                self.analyzer.request_times,
+                expect_request_times
+            )
+            self.assertEqual(
+                self.analyzer.parsing_errors,
+                expect_parsing_errors
+            )
+
+    def test_parse_log_with_bad_lines(self):
+        with open(self.find_file('log/sample.log-2')) as logfile:
+            self.analyzer.parse_log(logfile)
+            expect_requests_count = 7
+            expect_requests_time_sum = 1.6
+            expect_parsing_errors = 2
+            expect_request_times = {
+                '/api/v2/banner': [0.3, 0.4, 0.5],
+                '/api/1/photo': [0.1, 0.1, 0.1, 0.1],
+            }
+            self.assertEqual(
+                self.analyzer.requests_count,
+                expect_requests_count
+            )
+            self.assertLess(
+                abs(self.analyzer.requests_time_sum - expect_requests_time_sum),
+                self.epsilon
+            )
+            self.assertDictEqual(
+                self.analyzer.request_times,
+                expect_request_times
+            )
+            self.assertEqual(
+                self.analyzer.parsing_errors,
+                expect_parsing_errors
+            )
 
 
 if __name__ == '__main__':
