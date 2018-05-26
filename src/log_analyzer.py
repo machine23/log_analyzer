@@ -7,6 +7,7 @@
 #                     '$request_time';
 import os
 import re
+import gzip
 from datetime import datetime
 from statistics import median
 
@@ -35,8 +36,10 @@ class LogAnalyzer:
         'request_time': r'\d+\.\d+',
     }
 
-    def __init__(self, config):
+    def __init__(self, config, logname=None):
         self.config = config
+        self.logname_for_analyze = logname
+        self.logfile_for_analyze = None
         self.requests_count = 0
         self.requests_time_sum = 0
         self.request_times = {}
@@ -136,6 +139,27 @@ class LogAnalyzer:
                 'time_med': round(time_med, round_digits),
             }
             self.urls_stats[url] = temp
+
+    def open(self):
+        if self.logfile_for_analyze is None:
+            ext = self.logname_for_analyze.split('.')[-1]
+            if ext == 'gz':
+                self.logfile_for_analyze = gzip.open(self.logname_for_analyze)
+            else:
+                self.logfile_for_analyze = open(self.logname_for_analyze)
+
+    def close(self):
+        if self.logfile_for_analyze:
+            self.logfile_for_analyze.close()
+            self.logfile_for_analyze = None
+
+    def __enter__(self):
+        self.open()
+        return self
+
+    def __exit__(self, *exc_details):
+        self.close()
+
 
 
 def main():

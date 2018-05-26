@@ -2,6 +2,7 @@ import unittest
 import os
 from datetime import datetime
 from unittest import mock
+from unittest.mock import mock_open
 
 from ..log_analyzer import LogAnalyzer
 
@@ -13,13 +14,13 @@ class TestLogAnalyzer(unittest.TestCase):
         return os.path.join(test_dir, filename)
 
     def setUp(self):
-        config = {
+        self.test_config = {
             'REPORT_SIZE': 1000,
             'REPORT_DIR': './reports',
             'LOG_DIR': './log',
             'LOG_PREFIX': 'sample',
         }
-        self.analyzer = LogAnalyzer(config)
+        self.analyzer = LogAnalyzer(self.test_config)
         self.maxDiff = None
         self.epsilon = 0.0001
 
@@ -181,6 +182,25 @@ class TestLogAnalyzer(unittest.TestCase):
             self.analyzer.urls_stats,
             expect_urls_stats
         )
+
+    def test_open_with_plain(self):
+        filename = 'test.log'
+        expect = 'test'
+        with mock.patch('builtins.open', mock_open(read_data='test')) as m:
+            analyzer = LogAnalyzer(self.test_config, filename)
+            analyzer.open()
+            result = analyzer.logfile_for_analyze.read()
+            self.assertEqual(result, expect)
+
+    def test_open_with_gzip(self):
+        filename_gz = 'test.log.gz'
+        expect = 'test'
+        with mock.patch('gzip.open', mock_open(read_data='test')) as m:
+            analyzer = LogAnalyzer(self.test_config, filename_gz)
+            analyzer.open()
+            result = analyzer.logfile_for_analyze.read()
+            self.assertEqual(result, expect)
+
 
 
 if __name__ == '__main__':
