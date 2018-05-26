@@ -149,6 +149,39 @@ class TestLogAnalyzer(unittest.TestCase):
                 expect_parsing_errors
             )
 
+    def test_compute_stats(self):
+        self.analyzer.requests_count = 7
+        self.analyzer.requests_time_sum = 1.6
+        self.analyzer.request_times = {
+            '/api/v2/banner': [0.3, 0.4, 0.5],
+            '/api/1/photo': [0.1, 0.1, 0.1, 0.1],
+        }
+        self.analyzer.compute_stats()
+        expect_urls_stats = {
+            '/api/v2/banner': {
+                'count': 3,
+                'count_perc': round(3*100/7, 2),
+                'time_sum': round(1.2, 2),
+                'time_perc': round(1.2/1.6, 2),
+                'time_avg': round(1.2/3, 2),
+                'time_max': 0.5,
+                'time_med': 0.4,
+            },
+            '/api/1/photo': {
+                'count': 4,
+                'count_perc': round(4*100/7, 2),
+                'time_sum': round(0.4, 2),
+                'time_perc': round(0.4/1.6, 2),
+                'time_avg': round(0.4/4, 2),
+                'time_max': 0.1,
+                'time_med': 0.1,
+            },
+        }
+        self.assertDictEqual(
+            self.analyzer.urls_stats,
+            expect_urls_stats
+        )
+
 
 if __name__ == '__main__':
     unittest.main()

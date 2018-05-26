@@ -8,6 +8,7 @@
 import os
 import re
 from datetime import datetime
+from statistics import median
 
 config = {
     'REPORT_SIZE': 1000,
@@ -19,18 +20,18 @@ config = {
 
 class LogAnalyzer:
     cols_regexp = {
-        'remote_addr': r'[\d\.]+\s',
-        'remote_user': '\S*\s+',
-        'http_x_real_ip': r'\S*\s',
-        'time_local': r'\[.*?\]\s',
-        'request': r'".*?"\s',
-        'status': r'\d+\s',
-        'body_bytes_sent': r'\d+\s',
-        'http_referer': r'".*?"\s',
-        'http_user_agent': r'".*?"\s',
-        'http_x_forwarded_for': r'".*?"\s',
-        'http_X_REQUEST_ID': r'".*?"\s',
-        'http_X_RB_USER': r'".*?"\s',
+        'remote_addr': r'[\d\.]+',
+        'remote_user': r'\S*',
+        'http_x_real_ip': r'\S*',
+        'time_local': r'\[.*?\]',
+        'request': r'".*?"',
+        'status': r'\d+',
+        'body_bytes_sent': r'\d+',
+        'http_referer': r'".*?"',
+        'http_user_agent': r'".*?"',
+        'http_x_forwarded_for': r'".*?"',
+        'http_X_REQUEST_ID': r'".*?"',
+        'http_X_RB_USER': r'".*?"',
         'request_time': r'\d+\.\d+',
     }
 
@@ -39,6 +40,7 @@ class LogAnalyzer:
         self.requests_count = 0
         self.requests_time_sum = 0
         self.request_times = {}
+        self.urls_stats = {}
         self.parsing_errors = 0
         self.line_cols = (
             'remote_addr',
@@ -84,13 +86,13 @@ class LogAnalyzer:
         start = 0
 
         for col in self.line_cols:
-            match = re.match(self.cols_regexp[col], line[start:])
+            match = re.match(self.cols_regexp[col], line[start:].strip())
 
             if not match:
                 msg = 'Cannot parse %s in line \'%s\'' % (col, line)
                 raise ValueError(msg)
 
-            start += match.end()
+            start += match.end() + 1
             value = match.group().strip('[]"" ')
             if col in ('status', 'body_bytes_sent'):
                 value = int(value)
@@ -113,6 +115,27 @@ class LogAnalyzer:
             self.requests_count += 1
             self.requests_time_sum += req_time
             self.request_times.setdefault(url, []).append(req_time)
+
+    def compute_stats(self, round_digits=2):
+        for url, times in self.request_times.items():
+            count = len(times)
+            count_perc = count * 100 / self.requests_count
+            time_sum = sum(times)
+            time_perc = time_sum / self.requests_time_sum
+            time_avg = time_sum / count
+            time_max = max(times)
+            time_med = median(times)
+
+            temp = {
+                'count': count,
+                'count_perc': round(count_perc, round_digits),
+                'time_sum': round(time_sum, round_digits),
+                'time_perc': round(time_perc, round_digits),
+                'time_avg': round(time_avg, round_digits),
+                'time_max': time_max,
+                'time_med': round(time_med, round_digits),
+            }
+            self.urls_stats[url] = temp
 
 
 def main():
