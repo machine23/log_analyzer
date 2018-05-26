@@ -43,9 +43,9 @@ class LogAnalyzer:
         self.requests_count = 0
         self.requests_time_sum = 0
         self.request_times = {}
-        self.urls_stats = {}
+        self.urls_stats = []
         self.parsing_errors = 0
-        self.line_cols = (
+        self._line_cols = (
             'remote_addr',
             'remote_user',
             'http_x_real_ip',
@@ -60,6 +60,14 @@ class LogAnalyzer:
             'http_X_RB_USER',
             'request_time',
         )
+
+    @property
+    def line_cols(self):
+        return self._line_cols
+
+    @line_cols.setter
+    def line_cols(self, value):
+        self._line_cols = value
 
     def date_in_logname(self, logname):
         """ Returns datetime object with date from logname. """
@@ -129,7 +137,8 @@ class LogAnalyzer:
             time_max = max(times)
             time_med = median(times)
 
-            temp = {
+            data = {
+                'url': url,
                 'count': count,
                 'count_perc': round(count_perc, round_digits),
                 'time_sum': round(time_sum, round_digits),
@@ -138,10 +147,10 @@ class LogAnalyzer:
                 'time_max': time_max,
                 'time_med': round(time_med, round_digits),
             }
-            self.urls_stats[url] = temp
+            self.urls_stats.append(data)
 
     def open(self):
-        if self.logfile_for_analyze is None:
+        if self.logfile_for_analyze is None and self.logname_for_analyze:
             ext = self.logname_for_analyze.split('.')[-1]
             if ext == 'gz':
                 self.logfile_for_analyze = gzip.open(self.logname_for_analyze)
@@ -159,7 +168,6 @@ class LogAnalyzer:
 
     def __exit__(self, *exc_details):
         self.close()
-
 
 
 def main():

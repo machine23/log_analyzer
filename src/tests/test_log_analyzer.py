@@ -158,8 +158,9 @@ class TestLogAnalyzer(unittest.TestCase):
             '/api/1/photo': [0.1, 0.1, 0.1, 0.1],
         }
         self.analyzer.compute_stats()
-        expect_urls_stats = {
-            '/api/v2/banner': {
+        expect_urls_stats = [
+            {
+                'url': '/api/v2/banner',
                 'count': 3,
                 'count_perc': round(3*100/7, 2),
                 'time_sum': round(1.2, 2),
@@ -168,7 +169,8 @@ class TestLogAnalyzer(unittest.TestCase):
                 'time_max': 0.5,
                 'time_med': 0.4,
             },
-            '/api/1/photo': {
+            {
+                'url': '/api/1/photo',
                 'count': 4,
                 'count_perc': round(4*100/7, 2),
                 'time_sum': round(0.4, 2),
@@ -177,8 +179,8 @@ class TestLogAnalyzer(unittest.TestCase):
                 'time_max': 0.1,
                 'time_med': 0.1,
             },
-        }
-        self.assertDictEqual(
+        ]
+        self.assertEqual(
             self.analyzer.urls_stats,
             expect_urls_stats
         )
