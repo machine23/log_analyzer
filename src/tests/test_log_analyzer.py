@@ -30,6 +30,9 @@ class TestLogAnalyzer(unittest.TestCase):
         result = self.analyzer.date_in_logname(logname)
         self.assertEqual(expected, result)
 
+    def test_date_in_logname_with_none(self):
+        self.assertIsNone(self.analyzer.date_in_logname(None))
+
     def test_date_in_logname_without_date(self):
         logname = 'sample.log'
         self.assertIsNone(self.analyzer.date_in_logname(logname))
@@ -65,7 +68,8 @@ class TestLogAnalyzer(unittest.TestCase):
             'remote_user': '3b81f63526fa8',
             'http_x_real_ip': '-',
             'time_local': '29/Jun/2017:03:50:22 +0300',
-            'request': 'GET /api/1/photogenic_banners/list/?server_name=WIN7RB4 HTTP/1.1',
+            'request': 'GET /api/1/photogenic_banners/list/?server_name='
+                       'WIN7RB4 HTTP/1.1',
             'status': 200,
             'body_bytes_sent': 12,
             'http_referer': '-',
@@ -203,6 +207,54 @@ class TestLogAnalyzer(unittest.TestCase):
             result = analyzer.logfile_for_analyze.read()
             self.assertEqual(result, expect)
 
+    def test_save(self):
+        template = '''<html>
+        <script>
+        var table = $table_json;
+        </script>
+        </html>'''
+
+        expect = '''<html>
+        <script>
+        var table = [{"time_sum": 5}, {"time_sum": 3}];
+        </script>
+        </html>'''
+
+        self.analyzer.report_size = 2
+        self.analyzer.urls_stats = [
+            {'time_sum': 1},
+            {'time_sum': 5},
+            {'time_sum': 2},
+            {'time_sum': 3},
+            {'time_sum': 0.1},
+        ]
+
+        with mock.patch('builtins.open', mock_open(read_data=template)) as m:
+            self.analyzer.save('template.html', report_name='report01.html')
+            m.assert_called_with('report01.html', 'w')
+            handle = m()
+            handle.write.assert_called_once_with(expect)
+
+    def test_save_with_right_report_name(self):
+        with mock.patch('builtins.open') as m:
+            self.analyzer.logname_for_analyze = 'sample.log-20170630'
+            self.analyzer.save('template.html')
+            m.assert_called_with('./reports/report-2017.06.30.html', 'w')
+
+    def test_save_with_custom_report_name(self):
+        with mock.patch('builtins.open') as m:
+            self.analyzer.save('template.html', report_name='report01')
+            m.assert_called_with('report01', 'w')
+
+    def test_construct_report_name(self):
+        cases = (
+            ('sample.log-20170630', 'report-2017.06.30.html'),
+            ('sample_01.log', 'report_for_sample_01.log.html')
+        )
+        for logname, expect in cases:
+            with self.subTest(logname=logname):
+                result = self.analyzer.construct_report_name(logname)
+                self.assertEqual(expect, result)
 
 
 if __name__ == '__main__':

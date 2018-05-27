@@ -7,6 +7,7 @@
 #                     '$request_time';
 import os
 import re
+import json
 import gzip
 from datetime import datetime
 from statistics import median
@@ -37,7 +38,13 @@ class LogAnalyzer:
     }
 
     def __init__(self, config, logname=None):
-        self.config = config
+        # self.config = config
+        self.log_dir = config.get('LOG_DIR', './log')
+        self.log_prefix = config.get('LOG_PREFIX', 'nginx-access-ui')
+        self.report_size = config.get('REPORT_SIZE', 1000)
+        self.report_dir = config.get('REPORT_DIR', './reports')
+        self.report_prefix = config.get('REPORT_PREFIX', 'report')
+
         self.logname_for_analyze = logname
         self.logfile_for_analyze = None
         self.requests_count = 0
@@ -71,21 +78,23 @@ class LogAnalyzer:
 
     def date_in_logname(self, logname):
         """ Returns datetime object with date from logname. """
+        if logname is None:
+            return
         date_match = re.search(r'\d{8}', logname)
         if date_match:
             return datetime.strptime(date_match.group(), '%Y%m%d')
 
     def get_last_log(self):
         """ Returns path to log file with latest date in name. """
-        files = os.listdir(self.config.get('LOG_DIR'))
+        files = os.listdir(self.log_dir)
         logs = [
             log for log in files
-            if log.startswith(self.config['LOG_PREFIX'])
+            if log.startswith(self.log_prefix)
             if self.date_in_logname(log)
         ]
         if logs:
             logname = max(logs, key=self.date_in_logname)
-            logpath = os.path.join(self.config['LOG_DIR'], logname)
+            logpath = os.path.join(self.log_dir, logname)
             return logpath
 
     def parse_line(self, line: str):
@@ -168,6 +177,31 @@ class LogAnalyzer:
 
     def __exit__(self, *exc_details):
         self.close()
+
+    def save(self, template, replace_str='$table_json', report_name=''):
+        with open(template) as template_file:
+            template_str = template_file.read()
+
+        data = sorted(
+            self.urls_stats, key=lambda x: x['time_sum'], reverse=True)
+
+        template_str = template_str.replace(
+            replace_str, json.dumps(data[:self.report_size]))
+        if not report_name:
+            report_name = self.construct_report_name(self.logname_for_analyze)
+            report_name = os.path.join(self.report_dir, report_name)
+
+        with open(report_name, 'w') as report_file:
+            report_file.write(template_str)
+
+    def construct_report_name(self, logname):
+        date = self.date_in_logname(logname)
+        if date:
+            report_name = '%s-%s.html' % (self.report_prefix,
+                                          date.strftime('%Y.%m.%d'))
+        else:
+            report_name = '%s_for_%s.html' % (self.report_prefix, logname)
+        return report_name
 
 
 def main():
