@@ -97,7 +97,7 @@ class LogAnalyzer:
             logpath = os.path.join(self.log_dir, logname)
             return logpath
 
-    def parse_line(self, line: str):
+    def _parse_line(self, line: str):
         """ Parses one line from log. Returns dict. """
         if not isinstance(line, str):
             raise TypeError('line must be a string, but get %s' % type(line))
@@ -122,10 +122,10 @@ class LogAnalyzer:
 
         return parsed_dict
 
-    def parse_log(self, logfile):
+    def _parse_log(self, logfile):
         for line in logfile:
             try:
-                req = self.parse_line(line)
+                req = self._parse_line(line)
             except ValueError as err:
                 self.parsing_errors += 1
                 continue
@@ -136,7 +136,7 @@ class LogAnalyzer:
             self.requests_time_sum += req_time
             self.request_times.setdefault(url, []).append(req_time)
 
-    def compute_stats(self, round_digits=2):
+    def _compute_stats(self, round_digits=2):
         for url, times in self.request_times.items():
             count = len(times)
             count_perc = count * 100 / self.requests_count
@@ -188,13 +188,13 @@ class LogAnalyzer:
         template_str = template_str.replace(
             replace_str, json.dumps(data[:self.report_size]))
         if not report_name:
-            report_name = self.construct_report_name(self.logname_for_analyze)
+            report_name = self._construct_report_name(self.logname_for_analyze)
             report_name = os.path.join(self.report_dir, report_name)
 
         with open(report_name, 'w') as report_file:
             report_file.write(template_str)
 
-    def construct_report_name(self, logname):
+    def _construct_report_name(self, logname):
         date = self.date_in_logname(logname)
         if date:
             report_name = '%s-%s.html' % (self.report_prefix,

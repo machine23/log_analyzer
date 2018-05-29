@@ -79,7 +79,7 @@ class TestLogAnalyzer(unittest.TestCase):
             'http_X_RB_USER': '-',
             'request_time': 0.133,
         }
-        result = self.analyzer.parse_line(line)
+        result = self.analyzer._parse_line(line)
         self.assertDictEqual(expected, result)
 
     def test_parse_line_without_str(self):
@@ -87,7 +87,7 @@ class TestLogAnalyzer(unittest.TestCase):
         for case in cases:
             with self.subTest(case=case):
                 with self.assertRaises(TypeError):
-                    self.analyzer.parse_line(case)
+                    self.analyzer._parse_line(case)
 
     def test_parse_line_with_bad_line(self):
         cases = (
@@ -98,11 +98,11 @@ class TestLogAnalyzer(unittest.TestCase):
         for case in cases:
             with self.subTest(case=case):
                 with self.assertRaises(ValueError):
-                    self.analyzer.parse_line(case)
+                    self.analyzer._parse_line(case)
 
     def test_parse_log(self):
         with open(self.find_file('log/sample.log-1')) as logfile:
-            self.analyzer.parse_log(logfile)
+            self.analyzer._parse_log(logfile)
             expect_requests_count = 7
             expect_requests_time_sum = 1.6
             expect_parsing_errors = 0
@@ -129,7 +129,7 @@ class TestLogAnalyzer(unittest.TestCase):
 
     def test_parse_log_with_bad_lines(self):
         with open(self.find_file('log/sample.log-2')) as logfile:
-            self.analyzer.parse_log(logfile)
+            self.analyzer._parse_log(logfile)
             expect_requests_count = 7
             expect_requests_time_sum = 1.6
             expect_parsing_errors = 2
@@ -161,7 +161,7 @@ class TestLogAnalyzer(unittest.TestCase):
             '/api/v2/banner': [0.3, 0.4, 0.5],
             '/api/1/photo': [0.1, 0.1, 0.1, 0.1],
         }
-        self.analyzer.compute_stats()
+        self.analyzer._compute_stats()
         expect_urls_stats = [
             {
                 'url': '/api/v2/banner',
@@ -253,7 +253,7 @@ class TestLogAnalyzer(unittest.TestCase):
         )
         for logname, expect in cases:
             with self.subTest(logname=logname):
-                result = self.analyzer.construct_report_name(logname)
+                result = self.analyzer._construct_report_name(logname)
                 self.assertEqual(expect, result)
 
 
