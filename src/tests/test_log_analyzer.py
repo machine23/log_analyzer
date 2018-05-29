@@ -93,7 +93,8 @@ class TestLogAnalyzer(unittest.TestCase):
         cases = (
             '',
             'asdf vaasd vsdf',
-            '1.22.234.122 1fq12   - - - - - - - -'
+            '1.22.234.122 1fq12   - - - - - - - -',
+            '1.196.116.32 -  - - "GET /api/v2/banner" 200 927 "-" "-" "-" "-" "-" 0.300',
         )
         for case in cases:
             with self.subTest(case=case):
@@ -220,6 +221,7 @@ class TestLogAnalyzer(unittest.TestCase):
         </script>
         </html>'''
 
+        self.analyzer.logname_for_analyze = 'test.log'
         self.analyzer.report_size = 2
         self.analyzer.urls_stats = [
             {'time_sum': 1},
@@ -236,20 +238,21 @@ class TestLogAnalyzer(unittest.TestCase):
             handle.write.assert_called_once_with(expect)
 
     def test_save_with_right_report_name(self):
+        self.analyzer.logname_for_analyze = 'sample.log-20170630'
         with mock.patch('builtins.open') as m:
-            self.analyzer.logname_for_analyze = 'sample.log-20170630'
             self.analyzer.save('template.html')
             m.assert_called_with('./reports/report-2017.06.30.html', 'w')
 
     def test_save_with_custom_report_name(self):
+        self.analyzer.logname_for_analyze = 'test.log'
         with mock.patch('builtins.open') as m:
             self.analyzer.save('template.html', report_name='report01')
             m.assert_called_with('report01', 'w')
 
     def test_construct_report_name(self):
         cases = (
-            ('sample.log-20170630', 'report-2017.06.30.html'),
-            ('sample_01.log', 'report_for_sample_01.log.html')
+            ('sample.log-20170630', './reports/report-2017.06.30.html'),
+            ('sample_01.log', './reports/report_for_sample_01.log.html')
         )
         for logname, expect in cases:
             with self.subTest(logname=logname):
