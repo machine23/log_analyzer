@@ -132,7 +132,7 @@ class TestLogAnalyzer(unittest.TestCase):
     def test_parse_log_with_bad_lines(self):
         with open(self.find_file('log/sample.log-2')) as logfile:
             self.analyzer._parse_log(logfile)
-            expect_requests_count = 7
+            expect_requests_count = 9
             expect_requests_time_sum = 1.6
             expect_parsing_errors = 2
             expect_request_times = {

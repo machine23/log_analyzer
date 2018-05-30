@@ -22,13 +22,17 @@ config = {
 }
 
 
+class TooManyErrors(Exception):
+    pass
+
+
 class LogAnalyzer:
     cols_regexp = {
         'remote_addr': r'[\d\.]+',
         'remote_user': r'\S*',
         'http_x_real_ip': r'\S*',
         'time_local': r'\[.*?\]',
-        'request': r'"(?:GET|POST) \S+ \S+"',
+        'request': r'"(?:GET|POST|HEAD|PUT|DELETE) \S+ \S+"',
         'status': r'\d+',
         'body_bytes_sent': r'\d+',
         'http_referer': r'".*?"',
@@ -47,6 +51,7 @@ class LogAnalyzer:
         self.report_size = config.get('REPORT_SIZE', 1000)
         self.report_dir = config.get('REPORT_DIR', './reports')
         self.report_prefix = config.get('REPORT_PREFIX', 'report')
+        self.max_pars_errors_perc = config.get('MAX_PARS_ERRORS_PERC', 10)
 
         if not logname:
             logname = self.get_last_log()
@@ -84,18 +89,14 @@ class LogAnalyzer:
 
     def date_in_logname(self, logname):
         """ Returns datetime object with date from logname. """
-        if logname is None:
-            return
-        date_match = re.search(r'\d{8}', logname)
-        if date_match:
-            return datetime.strptime(date_match.group(), '%Y%m%d')
+        if logname:
+            date_match = re.search(r'\d{8}', logname)
+            if date_match:
+                return datetime.strptime(date_match.group(), '%Y%m%d')
 
     def get_last_log(self):
         """ Returns path to log file with latest date in name. """
-        try:
-            files = os.listdir(self.log_dir)
-        except FileNotFoundError:
-            return
+        files = os.listdir(self.log_dir)
         logs = [
             log for log in files
             if log.startswith(self.log_prefix)
@@ -123,27 +124,39 @@ class LogAnalyzer:
 
             start += match.end() + 1
             value = match.group().strip('[]"" ')
-            if col in ('status', 'body_bytes_sent'):
-                value = int(value)
-            elif col == 'request_time':
-                value = float(value)
+            value = self.convert_col_type(col, value)
             parsed_dict[col] = value
 
         return parsed_dict
 
+    def convert_col_type(self, col, value):
+        if col in ('status', 'body_bytes_sent'):
+            value = int(value)
+        elif col == 'request_time':
+            value = float(value)
+        return value
+
     def _parse_log(self, logfile):
+        """ Parse whole log file. """
         for line in logfile:
+            self.requests_count += 1
             try:
                 req = self._parse_line(line)
             except ValueError as err:
                 self.parsing_errors += 1
+                self.check_max_errors()
                 continue
 
             req_time = req.get('request_time')
             url = req.get('request').split()[1]
-            self.requests_count += 1
             self.requests_time_sum += req_time
             self.request_times.setdefault(url, []).append(req_time)
+
+    def check_max_errors(self, min_lines_count=100):
+        if self.requests_count > min_lines_count:
+            errors_perc = self.parsing_errors * 100 / self.request_times
+            if errors_perc > self.max_pars_errors_perc:
+                raise TooManyErrors('Тoo many errors in the analyzed file.')
 
     def _compute_stats(self, round_digits=2):
         for url, times in self.request_times.items():
@@ -189,10 +202,12 @@ class LogAnalyzer:
         self.close()
 
     def default_template(self):
+        """ Return path to the default template file. """
         file_dir = os.path.dirname(os.path.abspath(__file__))
         return os.path.join(file_dir, 'report.html')
 
     def save(self, report, report_name):
+        """ Save report with custom report name. """
         report_dir = os.path.dirname(os.path.abspath(report_name))
         if not report_dir:
             os.makedirs(report_dir)
@@ -215,6 +230,7 @@ class LogAnalyzer:
         return template_str
 
     def _construct_report_name(self, logname):
+        """ Create a file name based on the log name. """
         date = self.date_in_logname(logname)
         if date:
             report_name = '%s-%s.html' % (self.report_prefix,
@@ -225,19 +241,17 @@ class LogAnalyzer:
         return report_name
 
     def process(self, save=True):
-        if not self.logfile_for_analyze:
-            return
+        if self.logfile_for_analyze:
+            report_name = self._construct_report_name(self.logname_for_analyze)
 
-        report_name = self._construct_report_name(self.logname_for_analyze)
-        if not self.force and os.path.isfile(report_name):
-            return
+            if self.force or not os.path.isfile(report_name):
+                self._parse_log(self.logfile_for_analyze)
+                self._compute_stats()
 
-        self._parse_log(self.logfile_for_analyze)
-        self._compute_stats()
-        if save:
-            template = self.default_template()
-            report = self.render_to_template(template, '$json_table')
-            self.save(report, report_name)
+                if save:
+                    template = self.default_template()
+                    report = self.render_to_template(template, '$json_table')
+                    self.save(report, report_name)
 
 
 def parse_args():
@@ -289,7 +303,6 @@ def load_config(configfile, defaults: dict=None):
 
 def main(default_config):
     args = parse_args()
-
     config = load_config(args.config, default_config)
 
     with LogAnalyzer(config) as analyzer:
