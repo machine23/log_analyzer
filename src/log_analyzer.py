@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 # log_format ui_short '$remote_addr $remote_user $http_x_real_ip [$time_local] '$request' '
@@ -292,12 +292,6 @@ def parse_args():
         default=None,
         help='Path to the log file for analyze'
     )
-    parser.add_argument(
-        '--report',
-        dest='report',
-        default=None,
-        help='The custom name for report'
-    )
     args = parser.parse_args()
     if not os.path.isfile(args.config):
         parser.error('Config file not found')
@@ -342,7 +336,8 @@ def main(default_config):
     setup_logger(config.get('LOGFILE'))
 
     try:
-        with LogAnalyzer(config, logname=args.file, force=args.force) as analyzer:
+        with LogAnalyzer(
+                config, logname=args.file, force=args.force) as analyzer:
             analyzer.process()
     except Exception as err:
         logging.exception(err)
