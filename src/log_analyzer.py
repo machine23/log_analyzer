@@ -9,6 +9,7 @@ import argparse
 import configparser
 import gzip
 import json
+import logging
 import os
 import re
 from datetime import datetime
@@ -120,6 +121,7 @@ class LogAnalyzer:
 
             if not match:
                 msg = 'Cannot parse %s in line \'%s\'' % (col, line)
+                logging.error(msg)
                 raise ValueError(msg)
 
             start += match.end() + 1
@@ -138,6 +140,7 @@ class LogAnalyzer:
 
     def _parse_log(self, logfile):
         """ Parse whole log file. """
+        logging.info('Start parsing file %s', self.logname_for_analyze)
         for line in logfile:
             self.requests_count += 1
             try:
@@ -151,14 +154,16 @@ class LogAnalyzer:
             url = req.get('request').split()[1]
             self.requests_time_sum += req_time
             self.request_times.setdefault(url, []).append(req_time)
+        logging.info('End of parsing file.')
 
     def check_max_errors(self, min_lines_count=100):
         if self.requests_count > min_lines_count:
-            errors_perc = self.parsing_errors * 100 / self.request_times
+            errors_perc = self.parsing_errors * 100 / self.requests_count
             if errors_perc > self.max_pars_errors_perc:
                 raise TooManyErrors('Тoo many errors in the analyzed file.')
 
     def _compute_stats(self, round_digits=2):
+        logging.info('Start calculating statistics.')
         for url, times in self.request_times.items():
             count = len(times)
             count_perc = count * 100 / self.requests_count
@@ -179,6 +184,7 @@ class LogAnalyzer:
                 'time_med': round(time_med, round_digits),
             }
             self.urls_stats.append(data)
+        logging.info('End of calculation of statistics.')
 
     def open(self):
         if self.logfile_for_analyze is None and self.logname_for_analyze:
@@ -188,11 +194,13 @@ class LogAnalyzer:
                     self.logname_for_analyze, 'rt')
             else:
                 self.logfile_for_analyze = open(self.logname_for_analyze)
+            logging.info('%s opened for analyze.', self.logname_for_analyze)
 
     def close(self):
         if self.logfile_for_analyze:
             self.logfile_for_analyze.close()
             self.logfile_for_analyze = None
+            logging.info('File %s is closed.', self.logname_for_analyze)
 
     def __enter__(self):
         self.open()
@@ -214,10 +222,12 @@ class LogAnalyzer:
 
         with open(report_name, 'w') as report_file:
             report_file.write(report)
+        logging.info('Report save to %s', report_name)
 
     def render_to_template(self, template, replace_str):
         with open(template) as template_file:
             template_str = template_file.read()
+        logging.info('Render report with template %s', template)
 
         data = sorted(
             self.urls_stats,
@@ -241,6 +251,7 @@ class LogAnalyzer:
         return report_name
 
     def process(self, save=True):
+        logging.info('START')
         if self.logfile_for_analyze:
             report_name = self._construct_report_name(self.logname_for_analyze)
 
@@ -250,8 +261,12 @@ class LogAnalyzer:
 
                 if save:
                     template = self.default_template()
-                    report = self.render_to_template(template, '$json_table')
+                    report = self.render_to_template(template, '$table_json')
                     self.save(report, report_name)
+            else:
+                logging.info('The report already exists. Use the --force flag'
+                             ' to rewrite the report.')
+        logging.info('Job is done.')
 
 
 def parse_args():
@@ -301,12 +316,36 @@ def load_config(configfile, defaults: dict=None):
     return config
 
 
+def setup_logger(logfile):
+    if logfile:
+        log_dir = os.path.dirname(os.path.abspath(logfile))
+        path_exists = os.path.exists(log_dir)
+        logging.basicConfig(
+            format='[%(asctime)s] %(levelname).1s %(message)s',
+            filename=logfile if path_exists else None,
+            datefmt='%Y.%m.%d %H:%M:%S',
+            level=logging.INFO,
+        )
+        if not path_exists:
+            logging.info('Can not create log file. Instead, stdout is used.')
+    else:
+        logging.basicConfig(
+            format='[%(asctime)s] %(levelname).1s %(message)s',
+            datefmt='%Y.%m.%d %H:%M:%S',
+            level=logging.INFO,
+        )
+
+
 def main(default_config):
     args = parse_args()
     config = load_config(args.config, default_config)
+    setup_logger(config.get('LOGFILE'))
 
-    with LogAnalyzer(config) as analyzer:
-        analyzer.process()
+    try:
+        with LogAnalyzer(config, logname=args.file, force=args.force) as analyzer:
+            analyzer.process()
+    except Exception as err:
+        logging.exception(err)
 
 
 if __name__ == '__main__':
