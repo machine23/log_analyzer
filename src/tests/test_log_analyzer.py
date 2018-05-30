@@ -14,13 +14,13 @@ class TestLogAnalyzer(unittest.TestCase):
         return os.path.join(test_dir, filename)
 
     def setUp(self):
-        self.test_config = {
-            'REPORT_SIZE': 1000,
-            'REPORT_DIR': './reports',
-            'LOG_DIR': './log',
-            'LOG_PREFIX': 'sample',
-        }
-        self.analyzer = LogAnalyzer(self.test_config)
+        # self.test_config = {
+        #     'REPORT_SIZE': 1000,
+        #     'REPORT_DIR': './reports',
+        #     'LOG_DIR': './log',
+        #     'LOG_PREFIX': 'sample',
+        # }
+        self.analyzer = LogAnalyzer(log_prefix='sample')
         self.maxDiff = None
         self.epsilon = 0.0001
 
@@ -194,7 +194,7 @@ class TestLogAnalyzer(unittest.TestCase):
         filename = 'test.log'
         expect = 'test'
         with mock.patch('builtins.open', mock_open(read_data='test')) as m:
-            analyzer = LogAnalyzer(self.test_config, filename)
+            analyzer = LogAnalyzer(logname=filename)
             analyzer.open()
             result = analyzer.logfile_for_analyze.read()
             self.assertEqual(result, expect)
@@ -203,12 +203,12 @@ class TestLogAnalyzer(unittest.TestCase):
         filename_gz = 'test.log.gz'
         expect = 'test'
         with mock.patch('gzip.open', mock_open(read_data='test')) as m:
-            analyzer = LogAnalyzer(self.test_config, filename_gz)
+            analyzer = LogAnalyzer(logname=filename_gz)
             analyzer.open()
             result = analyzer.logfile_for_analyze.read()
             self.assertEqual(result, expect)
 
-    def test_save(self):
+    def test_render_to_template(self):
         template = '''<html>
         <script>
         var table = $table_json;
@@ -232,16 +232,15 @@ class TestLogAnalyzer(unittest.TestCase):
         ]
 
         with mock.patch('builtins.open', mock_open(read_data=template)) as m:
-            self.analyzer.save('template.html', report_name='report01.html')
-            m.assert_called_with('report01.html', 'w')
-            handle = m()
-            handle.write.assert_called_once_with(expect)
+            result = self.analyzer.render_to_template('template.html', '$table_json')
+            m.assert_called_with('template.html')
+            self.assertEqual(result, expect)
 
     def test_save_with_right_report_name(self):
         self.analyzer.logname_for_analyze = 'sample.log-20170630'
         with mock.patch('builtins.open') as m:
-            self.analyzer.save('template.html')
-            m.assert_called_with('./reports/report-2017.06.30.html', 'w')
+            self.analyzer.save('template.html', 'report.html')
+            m.assert_called_with('report.html', 'w')
 
     def test_save_with_custom_report_name(self):
         self.analyzer.logname_for_analyze = 'test.log'

@@ -5,6 +5,7 @@
 #                     '$status $body_bytes_sent '$http_referer' '
 #                     ''$http_user_agent' '$http_x_forwarded_for' '$http_X_REQUEST_ID' '$http_X_RB_USER' '
 #                     '$request_time';
+import argparse
 import os
 import re
 import json
@@ -37,19 +38,21 @@ class LogAnalyzer:
         'request_time': r'\d+\.\d+',
     }
 
-    def __init__(self, config, logname=None, force=False):
+    def __init__(self, log_prefix=None, logname=None, force=False,
+                 log_dir='./log', report_size=1000, report_dir='./reports',
+                 report_prefix='report'):
         self.force = force
         # self.config = config
-        self.log_dir = config.get('LOG_DIR', './log')
-        self.log_prefix = config.get('LOG_PREFIX', 'nginx-access-ui')
-        self.report_size = config.get('REPORT_SIZE', 1000)
-        self.report_dir = config.get('REPORT_DIR', './reports')
-        self.report_prefix = config.get('REPORT_PREFIX', 'report')
+        self.log_dir = log_dir
+        self.log_prefix = log_prefix
+        self.report_size = report_size
+        self.report_dir = report_dir
+        self.report_prefix = report_prefix
 
         if not logname:
             logname = self.get_last_log()
-
         self.logname_for_analyze = logname
+
         self.logfile_for_analyze = None
         self.requests_count = 0
         self.requests_time_sum = 0
@@ -190,26 +193,24 @@ class LogAnalyzer:
         file_dir = os.path.dirname(os.path.abspath(__file__))
         return os.path.join(file_dir, 'report.html')
 
-    def save(self, template, replace_str='$table_json', report_name=''):
-        if self.logname_for_analyze:
-            with open(template) as template_file:
-                template_str = template_file.read()
+    def save(self, report, report_name):
+        report_dir = os.path.dirname(os.path.abspath(report_name))
+        if not report_dir:
+            os.makedirs(report_dir)
 
-            data = sorted(
-                self.urls_stats, key=lambda x: x['time_sum'], reverse=True)
+        with open(report_name, 'w') as report_file:
+            report_file.write(report)
 
-            template_str = template_str.replace(
-                replace_str, json.dumps(data[:self.report_size]))
+    def render_to_template(self, template, replace_str):
+        with open(template) as template_file:
+            template_str = template_file.read()
 
-            if not os.path.isdir(self.report_dir):
-                os.makedirs(self.report_dir)
+        data = sorted(self.urls_stats,
+                      key=lambda x: x['time_sum'], reverse=True)
 
-            if not report_name:
-                report_name = self._construct_report_name(
-                    self.logname_for_analyze)
-
-            with open(report_name, 'w') as report_file:
-                report_file.write(template_str)
+        template_str = template_str.replace(
+            replace_str, json.dumps(data[:self.report_size]))
+        return template_str
 
     def _construct_report_name(self, logname):
         date = self.date_in_logname(logname)
@@ -221,7 +222,7 @@ class LogAnalyzer:
         report_name = os.path.join(self.report_dir, report_name)
         return report_name
 
-    def process(self):
+    def process(self, save=True):
         if not self.logfile_for_analyze:
             return
 
@@ -231,10 +232,45 @@ class LogAnalyzer:
 
         self._parse_log(self.logfile_for_analyze)
         self._compute_stats()
-        self.save(self.default_template(), report_name=report_name)
+        if save:
+            report = self.render_to_template(self.default_template())
+            self.save(report, report_name)
+
+
+def parse_args():
+    analyzer_dir = os.path.dirname(os.path.abspath(__file__))
+    default_config_path = os.path.join(analyzer_dir, 'log_analyzer.conf')
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '--config',
+        dest='config',
+        default=default_config_path,
+        help='Path to the config file',
+    )
+    parser.add_argument(
+        '--force',
+        dest='force',
+        action='store_true',
+        help='Force analyze log file',
+    )
+    parser.add_argument(
+        '--file',
+        dest='file',
+        default=None,
+        help='Path to the log file for analyze'
+    )
+    parser.add_argument(
+        '--report',
+        dest='report',
+        default=None,
+        help='The custom name for report'
+    )
+    return parser.parse_args()
 
 
 def main():
+
     with LogAnalyzer(config) as analyzer:
         analyzer.process()
 
