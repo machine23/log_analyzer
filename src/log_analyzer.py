@@ -6,10 +6,11 @@
 #                     ''$http_user_agent' '$http_x_forwarded_for' '$http_X_REQUEST_ID' '$http_X_RB_USER' '
 #                     '$request_time';
 import argparse
+import configparser
+import gzip
+import json
 import os
 import re
-import json
-import gzip
 from datetime import datetime
 from statistics import median
 
@@ -38,16 +39,14 @@ class LogAnalyzer:
         'request_time': r'\d+\.\d+',
     }
 
-    def __init__(self, log_prefix=None, logname=None, force=False,
-                 log_dir='./log', report_size=1000, report_dir='./reports',
-                 report_prefix='report'):
+    def __init__(self, config, logname=None, force=False):
         self.force = force
         # self.config = config
-        self.log_dir = log_dir
-        self.log_prefix = log_prefix
-        self.report_size = report_size
-        self.report_dir = report_dir
-        self.report_prefix = report_prefix
+        self.log_dir = config.get('LOG_DIR')
+        self.log_prefix = config.get('LOG_PREFIX')
+        self.report_size = config.get('REPORT_SIZE', 1000)
+        self.report_dir = config.get('REPORT_DIR', './reports')
+        self.report_prefix = config.get('REPORT_PREFIX', 'report')
 
         if not logname:
             logname = self.get_last_log()
@@ -205,11 +204,14 @@ class LogAnalyzer:
         with open(template) as template_file:
             template_str = template_file.read()
 
-        data = sorted(self.urls_stats,
-                      key=lambda x: x['time_sum'], reverse=True)
+        data = sorted(
+            self.urls_stats,
+            key=lambda x: x['time_sum'],
+            reverse=True)
 
         template_str = template_str.replace(
-            replace_str, json.dumps(data[:self.report_size]))
+            replace_str,
+            json.dumps(data[:self.report_size]))
         return template_str
 
     def _construct_report_name(self, logname):
@@ -233,7 +235,8 @@ class LogAnalyzer:
         self._parse_log(self.logfile_for_analyze)
         self._compute_stats()
         if save:
-            report = self.render_to_template(self.default_template())
+            template = self.default_template()
+            report = self.render_to_template(template, '$json_table')
             self.save(report, report_name)
 
 
@@ -266,14 +269,32 @@ def parse_args():
         default=None,
         help='The custom name for report'
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if not os.path.isfile(args.config):
+        parser.error('Config file not found')
+    return args
 
 
-def main():
+def load_config(configfile, defaults: dict=None):
+    config = {}
+    defaults = defaults or {}
+    config.update(defaults)
+    with open(configfile) as fileobj:
+        conf_str = fileobj.read()
+        if conf_str:
+            new_conf = json.loads(conf_str)
+            config.update(new_conf)
+    return config
+
+
+def main(default_config):
+    args = parse_args()
+
+    config = load_config(args.config, default_config)
 
     with LogAnalyzer(config) as analyzer:
         analyzer.process()
 
 
 if __name__ == '__main__':
-    main()
+    main(config)

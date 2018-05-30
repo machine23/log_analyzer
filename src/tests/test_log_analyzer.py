@@ -14,13 +14,14 @@ class TestLogAnalyzer(unittest.TestCase):
         return os.path.join(test_dir, filename)
 
     def setUp(self):
-        # self.test_config = {
-        #     'REPORT_SIZE': 1000,
-        #     'REPORT_DIR': './reports',
-        #     'LOG_DIR': './log',
-        #     'LOG_PREFIX': 'sample',
-        # }
-        self.analyzer = LogAnalyzer(log_prefix='sample')
+        self.test_config = {
+            'REPORT_SIZE': 1000,
+            'REPORT_DIR': './reports',
+            'LOG_DIR': './log',
+            'LOG_PREFIX': 'sample',
+            'REPORT_PREFIX': 'report',
+        }
+        self.analyzer = LogAnalyzer(self.test_config)
         self.maxDiff = None
         self.epsilon = 0.0001
 
@@ -194,7 +195,7 @@ class TestLogAnalyzer(unittest.TestCase):
         filename = 'test.log'
         expect = 'test'
         with mock.patch('builtins.open', mock_open(read_data='test')) as m:
-            analyzer = LogAnalyzer(logname=filename)
+            analyzer = LogAnalyzer(self.test_config, logname=filename)
             analyzer.open()
             result = analyzer.logfile_for_analyze.read()
             self.assertEqual(result, expect)
@@ -203,7 +204,7 @@ class TestLogAnalyzer(unittest.TestCase):
         filename_gz = 'test.log.gz'
         expect = 'test'
         with mock.patch('gzip.open', mock_open(read_data='test')) as m:
-            analyzer = LogAnalyzer(logname=filename_gz)
+            analyzer = LogAnalyzer(self.test_config, logname=filename_gz)
             analyzer.open()
             result = analyzer.logfile_for_analyze.read()
             self.assertEqual(result, expect)
@@ -232,7 +233,8 @@ class TestLogAnalyzer(unittest.TestCase):
         ]
 
         with mock.patch('builtins.open', mock_open(read_data=template)) as m:
-            result = self.analyzer.render_to_template('template.html', '$table_json')
+            result = self.analyzer.render_to_template(
+                'template.html', '$table_json')
             m.assert_called_with('template.html')
             self.assertEqual(result, expect)
 
