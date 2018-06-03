@@ -252,8 +252,6 @@ def parse_args():
         help='Force analyze log file',
     )
     args = parser.parse_args()
-    if not os.path.isfile(args.config):
-        parser.error('Config file not found')
     return args
 
 
@@ -275,7 +273,7 @@ def setup_logger(logfile):
         path_exists = os.path.exists(log_dir)
         logging.basicConfig(
             format='[%(asctime)s] %(levelname).1s %(message)s',
-            filename=logfile if path_exists else None,
+            filename=logfile,
             datefmt='%Y.%m.%d %H:%M:%S',
             level=logging.INFO,
         )
