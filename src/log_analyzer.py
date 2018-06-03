@@ -6,7 +6,7 @@
 #                     ''$http_user_agent' '$http_x_forwarded_for' '$http_X_REQUEST_ID' '$http_X_RB_USER' '
 #                     '$request_time';
 import argparse
-import configparser
+import functools
 import gzip
 import json
 import logging
@@ -26,6 +26,16 @@ config = {
 
 class TooManyErrors(Exception):
     pass
+
+
+def log_time_execution(func):
+    def wrapped(*args, **kwargs):
+        start = datetime.now()
+        result = func(*args, **kwargs)
+        logging.info('Time execution of %s: %s', func.__name__,
+                     datetime.now() - start)
+        return result
+    return wrapped
 
 
 def date_from_name(name):
@@ -119,6 +129,7 @@ def parse_line(line: str):
     return parsed_dict
 
 
+@log_time_execution
 def parse_log(log_path, errors_threshold):
     total = 0
     errors = 0
@@ -152,6 +163,7 @@ def parse_log(log_path, errors_threshold):
     return parsed_log
 
 
+@log_time_execution
 def calculate_statistics(log, round_digits=3):
     logging.info('Start calculating statistics.')
     stats = []
