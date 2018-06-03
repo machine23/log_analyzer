@@ -29,6 +29,7 @@ class TooManyErrors(Exception):
 
 
 def log_time_execution(func):
+    @functools.wraps(func)
     def wrapped(*args, **kwargs):
         start = datetime.now()
         result = func(*args, **kwargs)
@@ -117,7 +118,7 @@ def parse_line(line: str):
         match = re.match(cols_regexp[col], line[start:].strip())
 
         if not match:
-            msg = 'Cannot parse %s in line \'%s\'' % (col, line)
+            msg = "Cannot parse %s in line '%s'" % (col, line.strip())
             logging.error(msg)
             raise ValueError(msg)
 
@@ -250,12 +251,6 @@ def parse_args():
         action='store_true',
         help='Force analyze log file',
     )
-    parser.add_argument(
-        '--file',
-        dest='file',
-        default=None,
-        help='Path to the log file for analyze'
-    )
     args = parser.parse_args()
     if not os.path.isfile(args.config):
         parser.error('Config file not found')
@@ -299,10 +294,14 @@ def main(default_config):
     config = load_config(args.config, default_config)
     setup_logger(config.get('LOGFILE'))
 
+    logging.info('[START]')
     try:
         process_log(config, args.force)
+    except TooManyErrors as err:
+        logging.error(err)
     except Exception as err:
         logging.exception(err)
+    logging.info('[END]')
 
 
 if __name__ == '__main__':
