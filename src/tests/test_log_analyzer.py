@@ -4,39 +4,27 @@ from datetime import datetime
 from unittest import mock
 from unittest.mock import mock_open
 
-from ..log_analyzer import LogAnalyzer
+# from ..log_analyzer import LogAnalyzer
+from ..log_analyzer import (
+    TooManyErrors,
+    get_last_log,
+    date_from_name,
+    construct_report_name,
+    read_lines,
+    parse_line,
+    parse_log,
+    calculate_statistics,
+    stats_to_html,
+    save_report,
+)
 
 
 class TestLogAnalyzer(unittest.TestCase):
-    @staticmethod
-    def find_file(filename):
-        test_dir = os.path.dirname(os.path.abspath(__file__))
-        return os.path.join(test_dir, filename)
-
-    def setUp(self):
-        self.test_config = {
-            'REPORT_SIZE': 1000,
-            'REPORT_DIR': './reports',
-            'LOG_DIR': './log',
-            'LOG_PREFIX': 'sample',
-            'REPORT_PREFIX': 'report',
-        }
-        self.analyzer = LogAnalyzer(self.test_config)
-        self.maxDiff = None
-        self.epsilon = 0.0001
-
-    def test_date_in_logname(self):
+    def test_date_from_name(self):
         logname = 'sample.log-20170630.gz'
         expected = datetime(2017, 6, 30)
-        result = self.analyzer.date_in_logname(logname)
+        result = date_from_name(logname)
         self.assertEqual(expected, result)
-
-    def test_date_in_logname_with_none(self):
-        self.assertIsNone(self.analyzer.date_in_logname(None))
-
-    def test_date_in_logname_without_date(self):
-        logname = 'sample.log'
-        self.assertIsNone(self.analyzer.date_in_logname(logname))
 
     def test_get_last_log(self):
         with mock.patch('os.listdir') as mock_listdir:
@@ -47,17 +35,34 @@ class TestLogAnalyzer(unittest.TestCase):
                 'sample.log',
                 'nginx-any.log-20170630.gz'
             ]
-            self.assertEqual(self.analyzer.get_last_log(),
+            self.assertEqual(get_last_log('sample', './log'),
                              './log/sample.log-20170930')
 
-    def test_get_last_log_without_right_log(self):
-        with mock.patch('os.listdir') as mock_listdir:
-            mock_listdir.return_value = [
-                'sample.log',
-                'something-else.log',
-                'may_be_any',
-            ]
-            self.assertIsNone(self.analyzer.get_last_log())
+    def test_construct_report_name(self):
+        cases = (
+            ('sample.log-20170630', './reports/report-2017.06.30.html'),
+            ('sample.log-20170630.gz', './reports/report-2017.06.30.html')
+        )
+        for logname, expect in cases:
+            with self.subTest(logname=logname):
+                result = construct_report_name(logname, './reports')
+                self.assertEqual(expect, result)
+
+    def test_read_lines_with_gz(self):
+        filename_gz = 'test.log.gz'
+        expect = iter(('test1', 'test2', 'test3'))
+
+        with mock.patch('gzip.open', mock_open(read_data='test1\ntest2\ntest3')) as m:
+            for e in read_lines(filename_gz):
+                self.assertEqual(e, next(expect))
+
+    def test_read_lines_with_plain(self):
+        filename_gz = 'test.log'
+        expect = iter(('test1', 'test2', 'test3'))
+
+        with mock.patch('builtins.open', mock_open(read_data='test1\ntest2\ntest3')) as m:
+            for e in read_lines(filename_gz):
+                self.assertEqual(e, next(expect))
 
     def test_parse_line(self):
         line = ('1.99.174.176 3b81f63526fa8  - [29/Jun/2017:03:50:22 +0300]'
@@ -80,7 +85,7 @@ class TestLogAnalyzer(unittest.TestCase):
             'http_X_RB_USER': '-',
             'request_time': 0.133,
         }
-        result = self.analyzer._parse_line(line)
+        result = parse_line(line)
         self.assertDictEqual(expected, result)
 
     def test_parse_line_without_str(self):
@@ -88,7 +93,7 @@ class TestLogAnalyzer(unittest.TestCase):
         for case in cases:
             with self.subTest(case=case):
                 with self.assertRaises(TypeError):
-                    self.analyzer._parse_line(case)
+                    parse_line(case)
 
     def test_parse_line_with_bad_line(self):
         cases = (
@@ -100,116 +105,81 @@ class TestLogAnalyzer(unittest.TestCase):
         for case in cases:
             with self.subTest(case=case):
                 with self.assertRaises(ValueError):
-                    self.analyzer._parse_line(case)
+                    parse_line(case)
 
     def test_parse_log(self):
-        with open(self.find_file('log/sample.log-1')) as logfile:
-            self.analyzer._parse_log(logfile)
-            expect_requests_count = 7
-            expect_requests_time_sum = 1.6
-            expect_parsing_errors = 0
-            expect_request_times = {
+        data = (
+            '1.196.116.32 -  - [29/Jun/2017:03:50:22 +0300] "GET /api/v2/banner HTTP/1.1" 200 927 "-" "Lynx/2.8.8dev.9 libwww-FM/2.14 SSL-MM/1.4.1 GNUTLS/2.10.5" "-" "1498697422-2190034393-4708-9752759" "dc7161be3" 0.300',
+            '1.196.116.32 -  - [29/Jun/2017:03:50:22 +0300] "GET /api/v2/banner HTTP/1.1" 200 927 "-" "Lynx/2.8.8dev.9 libwww-FM/2.14 SSL-MM/1.4.1 GNUTLS/2.10.5" "-" "1498697422-2190034393-4708-9752759" "dc7161be3" 0.400',
+            '1.196.116.32 -  - [29/Jun/2017:03:50:22 +0300] "GET /api/v2/banner HTTP/1.1" 200 927 "-" "Lynx/2.8.8dev.9 libwww-FM/2.14 SSL-MM/1.4.1 GNUTLS/2.10.5" "-" "1498697422-2190034393-4708-9752759" "dc7161be3" 0.500',
+            '1.99.174.176 3b81f63526fa8  - [29/Jun/2017:03:50:22 +0300] "GET /api/1/photo HTTP/1.1" 200 12 "-" "Python-urllib/2.7" "-" "1498697422-32900793-4708-9752770" "-" 0.100',
+            '1.99.174.176 3b81f63526fa8  - [29/Jun/2017:03:50:22 +0300] "GET /api/1/photo HTTP/1.1" 200 12 "-" "Python-urllib/2.7" "-" "1498697422-32900793-4708-9752770" "-" 0.100',
+            '1.99.174.176 3b81f63526fa8  - [29/Jun/2017:03:50:22 +0300] "GET /api/1/photo HTTP/1.1" 200 12 "-" "Python-urllib/2.7" "-" "1498697422-32900793-4708-9752770" "-" 0.100',
+            '1.99.174.176 3b81f63526fa8  - [29/Jun/2017:03:50:22 +0300] "GET /api/1/photo HTTP/1.1" 200 12 "-" "Python-urllib/2.7" "-" "1498697422-32900793-4708-9752770" "-" 0.100',
+        )
+        expect = {
+            'total_time_sum': 1.6,
+            'requests_count': 7,
+            'items': {
                 '/api/v2/banner': [0.3, 0.4, 0.5],
                 '/api/1/photo': [0.1, 0.1, 0.1, 0.1],
             }
-            self.assertEqual(
-                self.analyzer.requests_count,
-                expect_requests_count
-            )
-            self.assertLess(
-                abs(self.analyzer.requests_time_sum - expect_requests_time_sum),
-                self.epsilon
-            )
-            self.assertDictEqual(
-                self.analyzer.request_times,
-                expect_request_times
-            )
-            self.assertEqual(
-                self.analyzer.parsing_errors,
-                expect_parsing_errors
-            )
-
-    def test_parse_log_with_bad_lines(self):
-        with open(self.find_file('log/sample.log-2')) as logfile:
-            self.analyzer._parse_log(logfile)
-            expect_requests_count = 9
-            expect_requests_time_sum = 1.6
-            expect_parsing_errors = 2
-            expect_request_times = {
-                '/api/v2/banner': [0.3, 0.4, 0.5],
-                '/api/1/photo': [0.1, 0.1, 0.1, 0.1],
-            }
-            self.assertEqual(
-                self.analyzer.requests_count,
-                expect_requests_count
-            )
-            self.assertLess(
-                abs(self.analyzer.requests_time_sum - expect_requests_time_sum),
-                self.epsilon
-            )
-            self.assertDictEqual(
-                self.analyzer.request_times,
-                expect_request_times
-            )
-            self.assertEqual(
-                self.analyzer.parsing_errors,
-                expect_parsing_errors
-            )
-
-    def test_compute_stats(self):
-        self.analyzer.requests_count = 7
-        self.analyzer.requests_time_sum = 1.6
-        self.analyzer.request_times = {
-            '/api/v2/banner': [0.3, 0.4, 0.5],
-            '/api/1/photo': [0.1, 0.1, 0.1, 0.1],
         }
-        self.analyzer._compute_stats()
-        expect_urls_stats = [
+        with mock.patch('src.log_analyzer.read_lines', return_value=data):
+            result = parse_log('sample.log', 10)
+            self.assertDictEqual(expect, result)
+
+    def test_parse_log_raise_too_many_errors(self):
+        data = (
+            '1.196.116.32 -  - [29/Jun/2017:03:50:22 +0300] "GET /api/v2/banner HTTP/1.1" 200 927 "-" "Lynx/2.8.8dev.9 libwww-FM/2.14 SSL-MM/1.4.1 GNUTLS/2.10.5" "-" "1498697422-2190034393-4708-9752759" "dc7161be3" 0.300',
+            '1.196.116.32 -  - [29/Jun/2017:03:50:22 +0300] "GET /api/v2/banner HTTP/1.1" 200 927 "-" "Lynx/2.8.8dev.9 libwww-FM/2.14 SSL-MM/1.4.1 GNUTLS/2.10.5" "-" "1498697422-2190034393-4708-9752759" "dc7161be3" 0.400',
+            '---',
+            '1.99.174.176 3b81f63526fa8  - [29/Jun/2017:03:50:22 +0300] "GET /api/1/photo HTTP/1.1" 200 12 "-" "Python-urllib/2.7" "-" "1498697422-32900793-4708-9752770" "-" 0.100',
+            '123',
+            '1.99.174.176 3b81f63526fa8  - [29/Jun/2017:03:50:22 +0300] "GET /api/1/photo HTTP/1.1" 200 12 "-" "Python-urllib/2.7" "-" "1498697422-32900793-4708-9752770" "-" 0.100',
+            '1.99.174.176 3b81f63526fa8  - [29/Jun/2017:03:50:22 +0300] "GET /api/1/photo HTTP/1.1" 200 12 "-" "Python-urllib/2.7" "-" "1498697422-32900793-4708-9752770" "-" 0.100',
+        )
+
+        with mock.patch('src.log_analyzer.read_lines', return_value=data):
+            with self.assertRaises(TooManyErrors):
+                parse_log('sample.log', 10)
+
+    def test_calculate_statistics(self):
+        round_digits = 3
+        log = {
+            'total_time_sum': 1.6,
+            'requests_count': 7,
+            'items': {
+                '/api/v2/banner': [0.3, 0.4, 0.5],
+                '/api/1/photo': [0.1, 0.1, 0.1, 0.1],
+            }
+        }
+        expect_stats = [
             {
                 'url': '/api/v2/banner',
                 'count': 3,
-                'count_perc': round(3*100/7, 2),
-                'time_sum': round(1.2, 2),
-                'time_perc': round(1.2/1.6, 2),
-                'time_avg': round(1.2/3, 2),
+                'count_perc': round(3*100/7, round_digits),
+                'time_sum': round(1.2, round_digits),
+                'time_perc': round(1.2/1.6, round_digits),
+                'time_avg': round(1.2/3, round_digits),
                 'time_max': 0.5,
                 'time_med': 0.4,
             },
             {
                 'url': '/api/1/photo',
                 'count': 4,
-                'count_perc': round(4*100/7, 2),
-                'time_sum': round(0.4, 2),
-                'time_perc': round(0.4/1.6, 2),
-                'time_avg': round(0.4/4, 2),
+                'count_perc': round(4*100/7, round_digits),
+                'time_sum': round(0.4, round_digits),
+                'time_perc': round(0.4/1.6, round_digits),
+                'time_avg': round(0.4/4, round_digits),
                 'time_max': 0.1,
                 'time_med': 0.1,
             },
         ]
-        self.assertEqual(
-            self.analyzer.urls_stats,
-            expect_urls_stats
-        )
+        result = calculate_statistics(log)
+        self.assertEqual(result, expect_stats)
 
-    def test_open_with_plain(self):
-        filename = 'test.log'
-        expect = 'test'
-        with mock.patch('builtins.open', mock_open(read_data='test')) as m:
-            analyzer = LogAnalyzer(self.test_config, logname=filename)
-            analyzer.open()
-            result = analyzer.logfile_for_analyze.read()
-            self.assertEqual(result, expect)
-
-    def test_open_with_gzip(self):
-        filename_gz = 'test.log.gz'
-        expect = 'test'
-        with mock.patch('gzip.open', mock_open(read_data='test')) as m:
-            analyzer = LogAnalyzer(self.test_config, logname=filename_gz)
-            analyzer.open()
-            result = analyzer.logfile_for_analyze.read()
-            self.assertEqual(result, expect)
-
-    def test_render_to_template(self):
+    def test_stats_to_html(self):
         template = '''<html>
         <script>
         var table = $table_json;
@@ -222,9 +192,7 @@ class TestLogAnalyzer(unittest.TestCase):
         </script>
         </html>'''
 
-        self.analyzer.logname_for_analyze = 'test.log'
-        self.analyzer.report_size = 2
-        self.analyzer.urls_stats = [
+        stats = [
             {'time_sum': 1},
             {'time_sum': 5},
             {'time_sum': 2},
@@ -232,33 +200,19 @@ class TestLogAnalyzer(unittest.TestCase):
             {'time_sum': 0.1},
         ]
 
-        with mock.patch('builtins.open', mock_open(read_data=template)) as m:
-            result = self.analyzer.render_to_template(
-                'template.html', '$table_json')
-            m.assert_called_with('template.html')
+        with mock.patch('builtins.open', mock_open(read_data=template)):
+            result = stats_to_html(stats, report_size=2)
             self.assertEqual(result, expect)
 
-    def test_save_with_right_report_name(self):
-        self.analyzer.logname_for_analyze = 'sample.log-20170630'
-        with mock.patch('builtins.open') as m:
-            self.analyzer.save('template.html', 'report.html')
-            m.assert_called_with('report.html', 'w')
-
-    def test_save_with_custom_report_name(self):
-        self.analyzer.logname_for_analyze = 'test.log'
-        with mock.patch('builtins.open') as m:
-            self.analyzer.save('template.html', report_name='report01')
-            m.assert_called_with('report01', 'w')
-
-    def test_construct_report_name(self):
-        cases = (
-            ('sample.log-20170630', './reports/report-2017.06.30.html'),
-            ('sample_01.log', './reports/report_for_sample_01.log.html')
-        )
-        for logname, expect in cases:
-            with self.subTest(logname=logname):
-                result = self.analyzer._construct_report_name(logname)
-                self.assertEqual(expect, result)
+    def test_save_report(self):
+        report = '<html><body>report</body></html>'
+        report_name = 'report-2017.06.08.html'
+        m = None
+        with mock.patch('builtins.open', mock_open()) as m:
+            save_report(report, report_name)
+            m.assert_called_once_with(report_name, 'w')
+            handle = m()
+            handle.write.assert_called_with(report)
 
 
 if __name__ == '__main__':

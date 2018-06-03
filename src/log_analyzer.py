@@ -20,6 +20,7 @@ config = {
     'REPORT_DIR': './reports',
     'LOG_DIR': './log',
     'LOG_PREFIX': 'nginx-access-ui',
+    'MAX_PARS_ERRORS_PERC': 10,
 }
 
 
@@ -27,7 +28,62 @@ class TooManyErrors(Exception):
     pass
 
 
-class LogAnalyzer:
+def date_from_name(name):
+    """ Returns datetime object with date from name. """
+    if name:
+        date_match = re.search(r'\d{8}', name)
+        if date_match:
+            return datetime.strptime(date_match.group(), '%Y%m%d')
+
+
+def get_last_log(log_prefix, log_dir):
+    last_log = ''
+    last_date = datetime(1, 1, 1)
+    pattern = r'%s.log-\d{8}(.gz)*' % log_prefix
+
+    files = os.listdir(log_dir)
+    for file in files:
+        if re.match(pattern, file):
+            date = date_from_name(file)
+            if date > last_date:
+                last_date = date
+                last_log = file
+    if last_log:
+        return os.path.join(log_dir, last_log)
+
+
+def construct_report_name(logname, report_dir, report_prefix='report'):
+    # sample.log-20170630 -> report-2017.06.30.html
+    date = date_from_name(logname)
+    report_name = '%s-%s.html' % (report_prefix, date.strftime('%Y.%m.%d'))
+    return os.path.join(report_dir, report_name)
+
+
+def read_lines(log_path: str):
+    if log_path.endswith('.gz'):
+        open_func = gzip.open
+        mode = 'rt'
+    else:
+        open_func = open
+        mode = 'r'
+    with open_func(log_path, mode=mode) as log:
+        for line in log:
+            yield line
+
+
+def convert_col_type(col, value):
+    if col in ('status', 'body_bytes_sent'):
+        value = int(value)
+    elif col == 'request_time':
+        value = float(value)
+    return value
+
+
+def parse_line(line: str):
+    """ Parses one line from log. Returns dict. """
+    if not isinstance(line, str):
+        raise TypeError('line must be a string, but get %s' % type(line))
+
     cols_regexp = {
         'remote_addr': r'[\d\.]+',
         'remote_user': r'\S*',
@@ -44,229 +100,125 @@ class LogAnalyzer:
         'request_time': r'\d+\.\d+',
     }
 
-    def __init__(self, config, logname=None, force=False):
-        self.force = force
-        # self.config = config
-        self.log_dir = config.get('LOG_DIR')
-        self.log_prefix = config.get('LOG_PREFIX')
-        self.report_size = config.get('REPORT_SIZE', 1000)
-        self.report_dir = config.get('REPORT_DIR', './reports')
-        self.report_prefix = config.get('REPORT_PREFIX', 'report')
-        self.max_pars_errors_perc = config.get('MAX_PARS_ERRORS_PERC', 10)
+    parsed_dict = {}
+    start = 0
 
-        if not logname:
-            logname = self.get_last_log()
-        self.logname_for_analyze = logname
+    for col in cols_regexp:
+        match = re.match(cols_regexp[col], line[start:].strip())
 
-        self.logfile_for_analyze = None
-        self.requests_count = 0
-        self.requests_time_sum = 0
-        self.request_times = {}
-        self.urls_stats = []
-        self.parsing_errors = 0
-        self._line_cols = (
-            'remote_addr',
-            'remote_user',
-            'http_x_real_ip',
-            'time_local',
-            'request',
-            'status',
-            'body_bytes_sent',
-            'http_referer',
-            'http_user_agent',
-            'http_x_forwarded_for',
-            'http_X_REQUEST_ID',
-            'http_X_RB_USER',
-            'request_time',
-        )
+        if not match:
+            msg = 'Cannot parse %s in line \'%s\'' % (col, line)
+            logging.error(msg)
+            raise ValueError(msg)
 
-    @property
-    def line_cols(self):
-        return self._line_cols
+        start += match.end() + 1
+        value = match.group().strip('[]"" ')
+        value = convert_col_type(col, value)
+        parsed_dict[col] = value
 
-    @line_cols.setter
-    def line_cols(self, value):
-        self._line_cols = value
+    return parsed_dict
 
-    def date_in_logname(self, logname):
-        """ Returns datetime object with date from logname. """
-        if logname:
-            date_match = re.search(r'\d{8}', logname)
-            if date_match:
-                return datetime.strptime(date_match.group(), '%Y%m%d')
 
-    def get_last_log(self):
-        """ Returns path to log file with latest date in name. """
-        files = os.listdir(self.log_dir)
-        logs = [
-            log for log in files
-            if log.startswith(self.log_prefix)
-            if self.date_in_logname(log)
-        ]
-        if logs:
-            logname = max(logs, key=self.date_in_logname)
-            logpath = os.path.join(self.log_dir, logname)
-            return logpath
+def parse_log(log_path, errors_threshold):
+    total = 0
+    errors = 0
+    parsed_log = {
+        'total_time_sum': 0,
+        'requests_count': 0,
+        'items': {},
+    }
 
-    def _parse_line(self, line: str):
-        """ Parses one line from log. Returns dict. """
-        if not isinstance(line, str):
-            raise TypeError('line must be a string, but get %s' % type(line))
+    logging.info('Start parsing file %s' % log_path)
+    for line in read_lines(log_path):
+        total += 1
+        try:
+            parsed_line = parse_line(line)
+        except ValueError as err:
+            errors += 1
+            continue
 
-        parsed_dict = {}
-        start = 0
+        req_time = parsed_line.get('request_time')
+        url = parsed_line.get('request').split()[1]
+        parsed_log['total_time_sum'] += req_time
+        parsed_log['requests_count'] += 1
+        parsed_log['items'].setdefault(url, []).append(req_time)
 
-        for col in self.line_cols:
-            match = re.match(self.cols_regexp[col], line[start:].strip())
+    parsed_log['total_time_sum'] = round(parsed_log['total_time_sum'], 3)
+    logging.info('End of parsing file.')
 
-            if not match:
-                msg = 'Cannot parse %s in line \'%s\'' % (col, line)
-                logging.error(msg)
-                raise ValueError(msg)
+    errors_perc = errors * 100 / total
+    if errors_perc > errors_threshold:
+        raise TooManyErrors('Тoo many errors in the analyzed file.')
+    return parsed_log
 
-            start += match.end() + 1
-            value = match.group().strip('[]"" ')
-            value = self.convert_col_type(col, value)
-            parsed_dict[col] = value
 
-        return parsed_dict
+def calculate_statistics(log, round_digits=3):
+    logging.info('Start calculating statistics.')
+    stats = []
+    for url, times in log['items'].items():
+        count = len(times)
+        count_perc = count * 100 / log['requests_count']
+        time_sum = sum(times)
+        time_perc = time_sum / log['total_time_sum']
+        time_avg = time_sum / count
+        time_max = max(times)
+        time_med = median(times)
 
-    def convert_col_type(self, col, value):
-        if col in ('status', 'body_bytes_sent'):
-            value = int(value)
-        elif col == 'request_time':
-            value = float(value)
-        return value
+        data = {
+            'url': url,
+            'count': count,
+            'count_perc': round(count_perc, round_digits),
+            'time_sum': round(time_sum, round_digits),
+            'time_perc': round(time_perc, round_digits),
+            'time_avg': round(time_avg, round_digits),
+            'time_max': time_max,
+            'time_med': round(time_med, round_digits),
+        }
+        stats.append(data)
+    logging.info('End of calculation of statistics.')
+    return stats
 
-    def _parse_log(self, logfile):
-        """ Parse whole log file. """
-        logging.info('Start parsing file %s', self.logname_for_analyze)
-        for line in logfile:
-            self.requests_count += 1
-            try:
-                req = self._parse_line(line)
-            except ValueError as err:
-                self.parsing_errors += 1
-                self.check_max_errors()
-                continue
 
-            req_time = req.get('request_time')
-            url = req.get('request').split()[1]
-            self.requests_time_sum += req_time
-            self.request_times.setdefault(url, []).append(req_time)
-        logging.info('End of parsing file.')
-
-    def check_max_errors(self, min_lines_count=100):
-        if self.requests_count > min_lines_count:
-            errors_perc = self.parsing_errors * 100 / self.requests_count
-            if errors_perc > self.max_pars_errors_perc:
-                raise TooManyErrors('Тoo many errors in the analyzed file.')
-
-    def _compute_stats(self, round_digits=2):
-        logging.info('Start calculating statistics.')
-        for url, times in self.request_times.items():
-            count = len(times)
-            count_perc = count * 100 / self.requests_count
-            time_sum = sum(times)
-            time_perc = time_sum / self.requests_time_sum
-            time_avg = time_sum / count
-            time_max = max(times)
-            time_med = median(times)
-
-            data = {
-                'url': url,
-                'count': count,
-                'count_perc': round(count_perc, round_digits),
-                'time_sum': round(time_sum, round_digits),
-                'time_perc': round(time_perc, round_digits),
-                'time_avg': round(time_avg, round_digits),
-                'time_max': time_max,
-                'time_med': round(time_med, round_digits),
-            }
-            self.urls_stats.append(data)
-        logging.info('End of calculation of statistics.')
-
-    def open(self):
-        if self.logfile_for_analyze is None and self.logname_for_analyze:
-            ext = self.logname_for_analyze.split('.')[-1]
-            if ext == 'gz':
-                self.logfile_for_analyze = gzip.open(
-                    self.logname_for_analyze, 'rt')
-            else:
-                self.logfile_for_analyze = open(self.logname_for_analyze)
-            logging.info('%s opened for analyze.', self.logname_for_analyze)
-
-    def close(self):
-        if self.logfile_for_analyze:
-            self.logfile_for_analyze.close()
-            self.logfile_for_analyze = None
-            logging.info('File %s is closed.', self.logname_for_analyze)
-
-    def __enter__(self):
-        self.open()
-        return self
-
-    def __exit__(self, *exc_details):
-        self.close()
-
-    def default_template(self):
-        """ Return path to the default template file. """
-        file_dir = os.path.dirname(os.path.abspath(__file__))
-        return os.path.join(file_dir, 'report.html')
-
-    def save(self, report, report_name):
-        """ Save report with custom report name. """
-        report_dir = os.path.dirname(os.path.abspath(report_name))
-        if not report_dir:
-            os.makedirs(report_dir)
-
-        with open(report_name, 'w') as report_file:
-            report_file.write(report)
-        logging.info('Report save to %s', report_name)
-
-    def render_to_template(self, template, replace_str):
-        with open(template) as template_file:
-            template_str = template_file.read()
-        logging.info('Render report with template %s', template)
+def stats_to_html(stats, report_size):
+    replace_str = '$table_json'
+    template_name = 'report.html'
+    template_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        template_name
+    )
+    with open(template_path) as template_file:
+        template_str = template_file.read()
+        logging.info('Render report with template %s', template_path)
 
         data = sorted(
-            self.urls_stats,
+            stats,
             key=lambda x: x['time_sum'],
             reverse=True)
 
         template_str = template_str.replace(
             replace_str,
-            json.dumps(data[:self.report_size]))
+            json.dumps(data[:report_size]))
         return template_str
 
-    def _construct_report_name(self, logname):
-        """ Create a file name based on the log name. """
-        date = self.date_in_logname(logname)
-        if date:
-            report_name = '%s-%s.html' % (self.report_prefix,
-                                          date.strftime('%Y.%m.%d'))
-        else:
-            report_name = '%s_for_%s.html' % (self.report_prefix, logname)
-        report_name = os.path.join(self.report_dir, report_name)
-        return report_name
 
-    def process(self, save=True):
-        logging.info('START')
-        if self.logfile_for_analyze:
-            report_name = self._construct_report_name(self.logname_for_analyze)
+def save_report(report, path):
+    with open(path, 'w') as report_file:
+        report_file.write(report)
+    logging.info('Report saved as %s', path)
 
-            if self.force or not os.path.isfile(report_name):
-                self._parse_log(self.logfile_for_analyze)
-                self._compute_stats()
 
-                if save:
-                    template = self.default_template()
-                    report = self.render_to_template(template, '$table_json')
-                    self.save(report, report_name)
-            else:
-                logging.info('The report already exists. Use the --force flag'
-                             ' to rewrite the report.')
-        logging.info('Job is done.')
+def process_log(config, force=False):
+    log_name = get_last_log(config.get('LOG_PREFIX'), config.get('LOG_DIR'))
+    report_name = construct_report_name(log_name, config.get('REPORT_DIR'))
+    if force or not os.path.isfile(report_name):
+        log = parse_log(log_name, config.get('MAX_PARS_ERRORS_PERC'))
+        stats = calculate_statistics(log)
+        report_html = stats_to_html(stats, config.get('REPORT_SIZE'))
+        save_report(report_html, report_name)
+    else:
+        logging.info(
+            'Рeport for %s already exists. Use --force to rewrite it.',
+            log_name)
 
 
 def parse_args():
@@ -336,9 +288,7 @@ def main(default_config):
     setup_logger(config.get('LOGFILE'))
 
     try:
-        with LogAnalyzer(
-                config, logname=args.file, force=args.force) as analyzer:
-            analyzer.process()
+        process_log(config, args.force)
     except Exception as err:
         logging.exception(err)
 
