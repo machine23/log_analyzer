@@ -252,8 +252,6 @@ def parse_args():
         help='Force analyze log file',
     )
     args = parser.parse_args()
-    if not os.path.isfile(args.config):
-        parser.error('Config file not found')
     return args
 
 
