@@ -15,10 +15,6 @@ $ python3 log_analyzer.py
 ```bash
 $ python3 log_analyzer.py --force
 ```
-Для анализа конкретного лога, используется флаг --file
-```bash
-$ python3 log_analyzer.py --file path/to/custom.log
-```
 Флаг --config нужен для указания пути к пользовательскому конфигурационному файлу.
 ```bash
 $ python3 log_analyzer.py --config path/to/config
@@ -42,7 +38,6 @@ $ python3 log_analyzer.py --config path/to/config
 * LOG_PREFIX - префикс имени лога для анализа;
 * REPORT_SIZE - количество записей в отчете;
 * REPORT_DIR - путь к директории для отчетов;
-* REPORT_PREFIX - префикс к имени отчета;
 * MAX_PARS_ERRORS_PERC - процент ошибок при парсинге лога, по достижению которого скрипт прекратит работу;
 * LOGFILE - путь к лог-файлу, в который скрипт сохраняет служебную информацию о проделанной работе. Если не указан, то данная информация будет выводиться в stdout.
 
