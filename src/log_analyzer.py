@@ -222,6 +222,9 @@ def save_report(report, path):
 
 def process_log(config, force=False):
     log_name = get_last_log(config.get('LOG_PREFIX'), config.get('LOG_DIR'))
+    if not log_name:
+        logging.info('No files to analyze')
+        return
     report_name = construct_report_name(log_name, config.get('REPORT_DIR'))
     if force or not os.path.isfile(report_name):
         log = parse_log(log_name, config.get('MAX_PARS_ERRORS_PERC'))
@@ -230,7 +233,7 @@ def process_log(config, force=False):
         save_report(report_html, report_name)
     else:
         logging.info(
-            'Рeport for %s already exists. Use --force to rewrite it.',
+            'Report for %s already exists. Use --force to rewrite it.',
             log_name)
 
 
