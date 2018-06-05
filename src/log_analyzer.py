@@ -78,8 +78,10 @@ def read_lines(log_path: str):
         open_func = open
         mode = 'r'
     with open_func(log_path, mode=mode) as log:
+        logging.info('File "%s" is opened for analysis.', log_path)
         for line in log:
             yield line
+    logging.info('File "%s" is closed.', log_path)
 
 
 def convert_col_type(col, value):
@@ -305,6 +307,8 @@ def main(default_config):
         process_log(config, args.force)
     except RuntimeError as err:
         logging.error(err)
+    except KeyboardInterrupt:
+        logging.error('Terminated by KeyboardInterrupt')
     except Exception as err:
         logging.exception(err)
     logging.info('[END]')
