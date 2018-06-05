@@ -6,8 +6,8 @@
 #                     ''$http_user_agent' '$http_x_forwarded_for' '$http_X_REQUEST_ID' '$http_X_RB_USER' '
 #                     '$request_time';
 import argparse
-import functools
 import collections
+import functools
 import gzip
 import json
 import logging
@@ -15,6 +15,7 @@ import os
 import re
 from datetime import datetime
 from statistics import median
+from string import Template
 
 config = {
     'REPORT_SIZE': 1000,
@@ -200,14 +201,13 @@ def calculate_statistics(log, round_digits=3):
 
 
 def stats_to_html(stats, report_size):
-    replace_str = '$table_json'
     template_name = 'report.html'
     template_path = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
         template_name
     )
     with open(template_path) as template_file:
-        template_str = template_file.read()
+        template = Template(template_file.read())
         logging.info('Render report with template %s', template_path)
 
         data = sorted(
@@ -215,10 +215,9 @@ def stats_to_html(stats, report_size):
             key=lambda x: x['time_sum'],
             reverse=True)
 
-        template_str = template_str.replace(
-            replace_str,
-            json.dumps(data[:report_size]))
-        return template_str
+        data_str = json.dumps(data[:report_size])
+
+        return template.safe_substitute(table_json=data_str)
 
 
 def save_report(report, path):
