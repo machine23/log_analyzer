@@ -134,45 +134,50 @@ def parse_line(line: str):
 def parse_log(log_path, errors_threshold):
     total = 0
     errors = 0
-    parsed_log = {
-        'total_time_sum': 0,
-        'requests_count': 0,
-        'items': {},
-    }
 
     logging.info('Start parsing file %s' % log_path)
     for line in read_lines(log_path):
         total += 1
         try:
-            parsed_line = parse_line(line)
+            yield parse_line(line)
         except ValueError as err:
             errors += 1
             continue
 
-        req_time = parsed_line.get('request_time')
-        url = parsed_line.get('request').split()[1]
-        parsed_log['total_time_sum'] += req_time
-        parsed_log['requests_count'] += 1
-        parsed_log['items'].setdefault(url, []).append(req_time)
-
-    parsed_log['total_time_sum'] = round(parsed_log['total_time_sum'], 3)
     logging.info('End of parsing file.')
 
     errors_perc = errors * 100 / total
     if errors_perc > errors_threshold:
-        raise RuntimeError('Тoo many errors in the analyzed file.')
-    return parsed_log
+        raise RuntimeError('Тoo many errors (%.2f%) in the analyzed file.',
+                           errors_perc)
+
+
+def collect_time_data(log):
+    time_data = {
+        'total_time_sum': 0,
+        'requests_count': 0,
+        'items': {},
+    }
+    for line in log:
+        req_time = line.get('request_time')
+        url = line.get('request').split()[1]
+        time_data['total_time_sum'] += req_time
+        time_data['requests_count'] += 1
+        time_data['items'].setdefault(url, []).append(req_time)
+    time_data['total_time_sum'] = round(time_data['total_time_sum'], 3)
+    return time_data
 
 
 @log_time_execution
 def calculate_statistics(log, round_digits=3):
     logging.info('Start calculating statistics.')
     stats = []
-    for url, times in log['items'].items():
+    time_data = collect_time_data(log)
+    for url, times in time_data['items'].items():
         count = len(times)
-        count_perc = count * 100 / log['requests_count']
+        count_perc = count * 100 / time_data['requests_count']
         time_sum = sum(times)
-        time_perc = time_sum / log['total_time_sum']
+        time_perc = time_sum / time_data['total_time_sum']
         time_avg = time_sum / count
         time_max = max(times)
         time_med = median(times)
@@ -221,20 +226,20 @@ def save_report(report, path):
 
 
 def process_log(config, force=False):
-    log_name = get_last_log(config.get('LOG_PREFIX'), config.get('LOG_DIR'))
-    if not log_name:
+    log = get_last_log(config.get('LOG_PREFIX'), config.get('LOG_DIR'))
+    if not log:
         logging.info('No files to analyze')
         return
-    report_name = construct_report_name(log_name, config.get('REPORT_DIR'))
+    report_name = construct_report_name(log, config.get('REPORT_DIR'))
     if force or not os.path.isfile(report_name):
-        log = parse_log(log_name, config.get('MAX_PARS_ERRORS_PERC'))
+        log = parse_log(log.path, config.get('MAX_PARS_ERRORS_PERC'))
         stats = calculate_statistics(log)
         report_html = stats_to_html(stats, config.get('REPORT_SIZE'))
         save_report(report_html, report_name)
     else:
         logging.info(
             'Report for %s already exists. Use --force to rewrite it.',
-            log_name)
+            log.path)
 
 
 def parse_args():

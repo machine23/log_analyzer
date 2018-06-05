@@ -7,6 +7,7 @@ from unittest.mock import mock_open
 # from ..log_analyzer import LogAnalyzer
 from ..log_analyzer import (
     LogMeta,
+    collect_time_data,
     get_last_log,
     date_from_name,
     construct_report_name,
@@ -116,12 +117,24 @@ class TestLogAnalyzer(unittest.TestCase):
     def test_parse_log(self):
         data = (
             '1.196.116.32 -  - [29/Jun/2017:03:50:22 +0300] "GET /api/v2/banner HTTP/1.1" 200 927 "-" "Lynx/2.8.8dev.9 libwww-FM/2.14 SSL-MM/1.4.1 GNUTLS/2.10.5" "-" "1498697422-2190034393-4708-9752759" "dc7161be3" 0.300',
-            '1.196.116.32 -  - [29/Jun/2017:03:50:22 +0300] "GET /api/v2/banner HTTP/1.1" 200 927 "-" "Lynx/2.8.8dev.9 libwww-FM/2.14 SSL-MM/1.4.1 GNUTLS/2.10.5" "-" "1498697422-2190034393-4708-9752759" "dc7161be3" 0.400',
-            '1.196.116.32 -  - [29/Jun/2017:03:50:22 +0300] "GET /api/v2/banner HTTP/1.1" 200 927 "-" "Lynx/2.8.8dev.9 libwww-FM/2.14 SSL-MM/1.4.1 GNUTLS/2.10.5" "-" "1498697422-2190034393-4708-9752759" "dc7161be3" 0.500',
             '1.99.174.176 3b81f63526fa8  - [29/Jun/2017:03:50:22 +0300] "GET /api/1/photo HTTP/1.1" 200 12 "-" "Python-urllib/2.7" "-" "1498697422-32900793-4708-9752770" "-" 0.100',
-            '1.99.174.176 3b81f63526fa8  - [29/Jun/2017:03:50:22 +0300] "GET /api/1/photo HTTP/1.1" 200 12 "-" "Python-urllib/2.7" "-" "1498697422-32900793-4708-9752770" "-" 0.100',
-            '1.99.174.176 3b81f63526fa8  - [29/Jun/2017:03:50:22 +0300] "GET /api/1/photo HTTP/1.1" 200 12 "-" "Python-urllib/2.7" "-" "1498697422-32900793-4708-9752770" "-" 0.100',
-            '1.99.174.176 3b81f63526fa8  - [29/Jun/2017:03:50:22 +0300] "GET /api/1/photo HTTP/1.1" 200 12 "-" "Python-urllib/2.7" "-" "1498697422-32900793-4708-9752770" "-" 0.100',
+        )
+
+        expect = [{'remote_addr': '1.196.116.32', 'remote_user': '-', 'http_x_real_ip': '-', 'time_local': '29/Jun/2017:03:50:22 +0300', 'request': 'GET /api/v2/banner HTTP/1.1', 'status': 200, 'body_bytes_sent': 927, 'http_referer': '-', 'http_user_agent': 'Lynx/2.8.8dev.9 libwww-FM/2.14 SSL-MM/1.4.1 GNUTLS/2.10.5', 'http_x_forwarded_for': '-', 'http_X_REQUEST_ID': '1498697422-2190034393-4708-9752759', 'http_X_RB_USER': 'dc7161be3', 'request_time': 0.3},
+                  {'remote_addr': '1.99.174.176', 'remote_user': '3b81f63526fa8', 'http_x_real_ip': '-', 'time_local': '29/Jun/2017:03:50:22 +0300', 'request': 'GET /api/1/photo HTTP/1.1', 'status': 200, 'body_bytes_sent': 12, 'http_referer': '-', 'http_user_agent': 'Python-urllib/2.7', 'http_x_forwarded_for': '-', 'http_X_REQUEST_ID': '1498697422-32900793-4708-9752770', 'http_X_RB_USER': '-', 'request_time': 0.1}]
+        with mock.patch('src.log_analyzer.read_lines', return_value=data):
+            result = list(parse_log('sample.log', 10))
+            self.assertListEqual(expect, result)
+
+    def test_collect_time_data(self):
+        data = (
+            {'remote_addr': '1.196.116.32', 'remote_user': '-', 'http_x_real_ip': '-', 'time_local': '29/Jun/2017:03:50:22 +0300', 'request': 'GET /api/v2/banner HTTP/1.1', 'status': 200, 'body_bytes_sent': 927, 'http_referer': '-', 'http_user_agent': 'Lynx/2.8.8dev.9 libwww-FM/2.14 SSL-MM/1.4.1 GNUTLS/2.10.5', 'http_x_forwarded_for': '-', 'http_X_REQUEST_ID': '1498697422-2190034393-4708-9752759', 'http_X_RB_USER': 'dc7161be3', 'request_time': 0.3},
+            {'remote_addr': '1.196.116.32', 'remote_user': '-', 'http_x_real_ip': '-', 'time_local': '29/Jun/2017:03:50:22 +0300', 'request': 'GET /api/v2/banner HTTP/1.1', 'status': 200, 'body_bytes_sent': 927, 'http_referer': '-', 'http_user_agent': 'Lynx/2.8.8dev.9 libwww-FM/2.14 SSL-MM/1.4.1 GNUTLS/2.10.5', 'http_x_forwarded_for': '-', 'http_X_REQUEST_ID': '1498697422-2190034393-4708-9752759', 'http_X_RB_USER': 'dc7161be3', 'request_time': 0.4},
+            {'remote_addr': '1.196.116.32', 'remote_user': '-', 'http_x_real_ip': '-', 'time_local': '29/Jun/2017:03:50:22 +0300', 'request': 'GET /api/v2/banner HTTP/1.1', 'status': 200, 'body_bytes_sent': 927, 'http_referer': '-', 'http_user_agent': 'Lynx/2.8.8dev.9 libwww-FM/2.14 SSL-MM/1.4.1 GNUTLS/2.10.5', 'http_x_forwarded_for': '-', 'http_X_REQUEST_ID': '1498697422-2190034393-4708-9752759', 'http_X_RB_USER': 'dc7161be3', 'request_time': 0.5},
+            {'remote_addr': '1.99.174.176', 'remote_user': '3b81f63526fa8', 'http_x_real_ip': '-', 'time_local': '29/Jun/2017:03:50:22 +0300', 'request': 'GET /api/1/photo HTTP/1.1', 'status': 200, 'body_bytes_sent': 12, 'http_referer': '-', 'http_user_agent': 'Python-urllib/2.7', 'http_x_forwarded_for': '-', 'http_X_REQUEST_ID': '1498697422-32900793-4708-9752770', 'http_X_RB_USER': '-', 'request_time': 0.1},
+            {'remote_addr': '1.99.174.176', 'remote_user': '3b81f63526fa8', 'http_x_real_ip': '-', 'time_local': '29/Jun/2017:03:50:22 +0300', 'request': 'GET /api/1/photo HTTP/1.1', 'status': 200, 'body_bytes_sent': 12, 'http_referer': '-', 'http_user_agent': 'Python-urllib/2.7', 'http_x_forwarded_for': '-', 'http_X_REQUEST_ID': '1498697422-32900793-4708-9752770', 'http_X_RB_USER': '-', 'request_time': 0.1},
+            {'remote_addr': '1.99.174.176', 'remote_user': '3b81f63526fa8', 'http_x_real_ip': '-', 'time_local': '29/Jun/2017:03:50:22 +0300', 'request': 'GET /api/1/photo HTTP/1.1', 'status': 200, 'body_bytes_sent': 12, 'http_referer': '-', 'http_user_agent': 'Python-urllib/2.7', 'http_x_forwarded_for': '-', 'http_X_REQUEST_ID': '1498697422-32900793-4708-9752770', 'http_X_RB_USER': '-', 'request_time': 0.1},
+            {'remote_addr': '1.99.174.176', 'remote_user': '3b81f63526fa8', 'http_x_real_ip': '-', 'time_local': '29/Jun/2017:03:50:22 +0300', 'request': 'GET /api/1/photo HTTP/1.1', 'status': 200, 'body_bytes_sent': 12, 'http_referer': '-', 'http_user_agent': 'Python-urllib/2.7', 'http_x_forwarded_for': '-', 'http_X_REQUEST_ID': '1498697422-32900793-4708-9752770', 'http_X_RB_USER': '-', 'request_time': 0.1},
         )
         expect = {
             'total_time_sum': 1.6,
@@ -131,9 +144,9 @@ class TestLogAnalyzer(unittest.TestCase):
                 '/api/1/photo': [0.1, 0.1, 0.1, 0.1],
             }
         }
-        with mock.patch('src.log_analyzer.read_lines', return_value=data):
-            result = parse_log('sample.log', 10)
-            self.assertDictEqual(expect, result)
+        result = collect_time_data(data)
+        self.assertEqual(result, expect)
+
 
     def test_parse_log_raise_too_many_errors(self):
         data = (
@@ -148,18 +161,19 @@ class TestLogAnalyzer(unittest.TestCase):
 
         with mock.patch('src.log_analyzer.read_lines', return_value=data):
             with self.assertRaises(RuntimeError):
-                parse_log('sample.log', 10)
+                list(parse_log('sample.log', 10))
 
     def test_calculate_statistics(self):
         round_digits = 3
-        log = {
-            'total_time_sum': 1.6,
-            'requests_count': 7,
-            'items': {
-                '/api/v2/banner': [0.3, 0.4, 0.5],
-                '/api/1/photo': [0.1, 0.1, 0.1, 0.1],
-            }
-        }
+        log = (
+            {'remote_addr': '1.196.116.32', 'remote_user': '-', 'http_x_real_ip': '-', 'time_local': '29/Jun/2017:03:50:22 +0300', 'request': 'GET /api/v2/banner HTTP/1.1', 'status': 200, 'body_bytes_sent': 927, 'http_referer': '-', 'http_user_agent': 'Lynx/2.8.8dev.9 libwww-FM/2.14 SSL-MM/1.4.1 GNUTLS/2.10.5', 'http_x_forwarded_for': '-', 'http_X_REQUEST_ID': '1498697422-2190034393-4708-9752759', 'http_X_RB_USER': 'dc7161be3', 'request_time': 0.3},
+            {'remote_addr': '1.196.116.32', 'remote_user': '-', 'http_x_real_ip': '-', 'time_local': '29/Jun/2017:03:50:22 +0300', 'request': 'GET /api/v2/banner HTTP/1.1', 'status': 200, 'body_bytes_sent': 927, 'http_referer': '-', 'http_user_agent': 'Lynx/2.8.8dev.9 libwww-FM/2.14 SSL-MM/1.4.1 GNUTLS/2.10.5', 'http_x_forwarded_for': '-', 'http_X_REQUEST_ID': '1498697422-2190034393-4708-9752759', 'http_X_RB_USER': 'dc7161be3', 'request_time': 0.4},
+            {'remote_addr': '1.196.116.32', 'remote_user': '-', 'http_x_real_ip': '-', 'time_local': '29/Jun/2017:03:50:22 +0300', 'request': 'GET /api/v2/banner HTTP/1.1', 'status': 200, 'body_bytes_sent': 927, 'http_referer': '-', 'http_user_agent': 'Lynx/2.8.8dev.9 libwww-FM/2.14 SSL-MM/1.4.1 GNUTLS/2.10.5', 'http_x_forwarded_for': '-', 'http_X_REQUEST_ID': '1498697422-2190034393-4708-9752759', 'http_X_RB_USER': 'dc7161be3', 'request_time': 0.5},
+            {'remote_addr': '1.99.174.176', 'remote_user': '3b81f63526fa8', 'http_x_real_ip': '-', 'time_local': '29/Jun/2017:03:50:22 +0300', 'request': 'GET /api/1/photo HTTP/1.1', 'status': 200, 'body_bytes_sent': 12, 'http_referer': '-', 'http_user_agent': 'Python-urllib/2.7', 'http_x_forwarded_for': '-', 'http_X_REQUEST_ID': '1498697422-32900793-4708-9752770', 'http_X_RB_USER': '-', 'request_time': 0.1},
+            {'remote_addr': '1.99.174.176', 'remote_user': '3b81f63526fa8', 'http_x_real_ip': '-', 'time_local': '29/Jun/2017:03:50:22 +0300', 'request': 'GET /api/1/photo HTTP/1.1', 'status': 200, 'body_bytes_sent': 12, 'http_referer': '-', 'http_user_agent': 'Python-urllib/2.7', 'http_x_forwarded_for': '-', 'http_X_REQUEST_ID': '1498697422-32900793-4708-9752770', 'http_X_RB_USER': '-', 'request_time': 0.1},
+            {'remote_addr': '1.99.174.176', 'remote_user': '3b81f63526fa8', 'http_x_real_ip': '-', 'time_local': '29/Jun/2017:03:50:22 +0300', 'request': 'GET /api/1/photo HTTP/1.1', 'status': 200, 'body_bytes_sent': 12, 'http_referer': '-', 'http_user_agent': 'Python-urllib/2.7', 'http_x_forwarded_for': '-', 'http_X_REQUEST_ID': '1498697422-32900793-4708-9752770', 'http_X_RB_USER': '-', 'request_time': 0.1},
+            {'remote_addr': '1.99.174.176', 'remote_user': '3b81f63526fa8', 'http_x_real_ip': '-', 'time_local': '29/Jun/2017:03:50:22 +0300', 'request': 'GET /api/1/photo HTTP/1.1', 'status': 200, 'body_bytes_sent': 12, 'http_referer': '-', 'http_user_agent': 'Python-urllib/2.7', 'http_x_forwarded_for': '-', 'http_X_REQUEST_ID': '1498697422-32900793-4708-9752770', 'http_X_RB_USER': '-', 'request_time': 0.1},
+        )
         expect_stats = [
             {
                 'url': '/api/v2/banner',
