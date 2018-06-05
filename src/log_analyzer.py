@@ -7,6 +7,7 @@
 #                     '$request_time';
 import argparse
 import functools
+import collections
 import gzip
 import json
 import logging
@@ -22,6 +23,8 @@ config = {
     'LOG_PREFIX': 'nginx-access-ui',
     'MAX_PARS_ERRORS_PERC': 10,
 }
+
+LogMeta = collections.namedtuple('LogMeta', ['path', 'date'])
 
 
 def log_time_execution(func):
@@ -56,12 +59,13 @@ def get_last_log(log_prefix, log_dir):
                 last_date = date
                 last_log = file
     if last_log:
-        return os.path.join(log_dir, last_log)
+        path = os.path.join(log_dir, last_log)
+        return LogMeta(path, last_date)
 
 
-def construct_report_name(logname, report_dir, report_prefix='report'):
+def construct_report_name(logmeta, report_dir, report_prefix='report'):
     # sample.log-20170630 -> report-2017.06.30.html
-    date = date_from_name(logname)
+    date = logmeta.date
     report_name = '%s-%s.html' % (report_prefix, date.strftime('%Y.%m.%d'))
     return os.path.join(report_dir, report_name)
 

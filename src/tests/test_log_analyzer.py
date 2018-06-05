@@ -6,6 +6,7 @@ from unittest.mock import mock_open
 
 # from ..log_analyzer import LogAnalyzer
 from ..log_analyzer import (
+    LogMeta,
     get_last_log,
     date_from_name,
     construct_report_name,
@@ -26,6 +27,7 @@ class TestLogAnalyzer(unittest.TestCase):
         self.assertEqual(expected, result)
 
     def test_get_last_log(self):
+        expect = LogMeta('./log/sample.log-20170930', datetime(2017, 9, 30))
         with mock.patch('os.listdir') as mock_listdir:
             mock_listdir.return_value = [
                 'sample.log-20170630.gz',
@@ -34,17 +36,22 @@ class TestLogAnalyzer(unittest.TestCase):
                 'sample.log',
                 'nginx-any.log-20170630.gz'
             ]
-            self.assertEqual(get_last_log('sample', './log'),
-                             './log/sample.log-20170930')
+            self.assertEqual(get_last_log('sample', './log'), expect)
 
     def test_construct_report_name(self):
         cases = (
-            ('sample.log-20170630', './reports/report-2017.06.30.html'),
-            ('sample.log-20170630.gz', './reports/report-2017.06.30.html')
+            (
+                LogMeta('sample.log-20170630', datetime(2017, 5, 8)),
+                './reports/report-2017.05.08.html'
+            ),
+            (
+                LogMeta('sample.log-20170630.gz', datetime(2017, 6, 10)),
+                './reports/report-2017.06.10.html'
+            )
         )
-        for logname, expect in cases:
-            with self.subTest(logname=logname):
-                result = construct_report_name(logname, './reports')
+        for logmeta, expect in cases:
+            with self.subTest(logmeta=logmeta):
+                result = construct_report_name(logmeta, './reports')
                 self.assertEqual(expect, result)
 
     def test_read_lines_with_gz(self):
