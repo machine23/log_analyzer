@@ -24,10 +24,6 @@ config = {
 }
 
 
-class TooManyErrors(Exception):
-    pass
-
-
 def log_time_execution(func):
     @functools.wraps(func)
     def wrapped(*args, **kwargs):
@@ -160,7 +156,7 @@ def parse_log(log_path, errors_threshold):
 
     errors_perc = errors * 100 / total
     if errors_perc > errors_threshold:
-        raise TooManyErrors('Тoo many errors in the analyzed file.')
+        raise RuntimeError('Тoo many errors in the analyzed file.')
     return parsed_log
 
 
@@ -298,7 +294,7 @@ def main(default_config):
     logging.info('[START]')
     try:
         process_log(config, args.force)
-    except TooManyErrors as err:
+    except RuntimeError as err:
         logging.error(err)
     except Exception as err:
         logging.exception(err)

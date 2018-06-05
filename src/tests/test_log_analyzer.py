@@ -6,7 +6,6 @@ from unittest.mock import mock_open
 
 # from ..log_analyzer import LogAnalyzer
 from ..log_analyzer import (
-    TooManyErrors,
     get_last_log,
     date_from_name,
     construct_report_name,
@@ -141,7 +140,7 @@ class TestLogAnalyzer(unittest.TestCase):
         )
 
         with mock.patch('src.log_analyzer.read_lines', return_value=data):
-            with self.assertRaises(TooManyErrors):
+            with self.assertRaises(RuntimeError):
                 parse_log('sample.log', 10)
 
     def test_calculate_statistics(self):
