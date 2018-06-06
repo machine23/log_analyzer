@@ -18,12 +18,16 @@ class TestLogAnalyzer(unittest.TestCase):
         self.assertEqual(expected, result)
 
     def test_get_last_log(self):
-        expect = LogMeta('./log/sample.log-20170930', datetime(2017, 9, 30))
+        expect = LogMeta('./log/sample.log-20170815', datetime(2017, 8, 15))
         with mock.patch('os.listdir') as mock_listdir:
             mock_listdir.return_value = [
                 'sample.log-20170630.gz',
                 'sample.log-20170712.gz',
-                'sample.log-20170930',
+                'sample.log-20170815',
+                '_sample.log-20170816',
+                'sample.log-20170816agz',
+                'sample.log-20170817.bz',
+                'sample.log-20170818.gz.gz',
                 'sample.log',
                 'nginx-any.log-20170630.gz'
             ]

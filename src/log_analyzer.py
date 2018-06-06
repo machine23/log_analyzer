@@ -50,7 +50,7 @@ def date_from_name(name):
 def get_last_log(log_prefix, log_dir):
     last_log = ''
     last_date = datetime(1, 1, 1)
-    pattern = r'%s.log-\d{8}(.gz)*' % log_prefix
+    pattern = r'%s.log-\d{8}(\.gz)?$' % log_prefix
 
     files = os.listdir(log_dir)
     for file in files:
